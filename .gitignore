@@ -74,6 +74,7 @@ ehthumbs_vista.db
 
 # User-specific files (MonoDevelop/Xamarin Studio)
 *.userprefs
+*.pui
 
 # Build results
 [Dd]ebug/
@@ -103,3 +104,9 @@ ipch/
 *.cachefile
 *.VC.db
 *.VC.VC.opendb
+
+# Unreal
+Intermediate/
+Binaries/
+
+*.bak

@@ -1,0 +1,21 @@
+
+{
+	"FileVersion" : 3,
+	"FriendlyName" : "BackChannel",
+	"Version" : 1,
+	"VersionName": "1",
+	"Description" : "Utilities",
+	"Category" : "BackChannel",
+	"CreatedBy" : "Andrew Grant",
+	"CreatedByURL" : "https://github.com/andrewgrant",
+	"EnabledByDefault": false,
+ 
+	"Modules" :
+	[
+		{
+			"Name" : "BackChannel",
+			"Type" : "RuntimeNoCommandlet",
+			"LoadingPhase" : "Default"
+		}
+	]
+}
