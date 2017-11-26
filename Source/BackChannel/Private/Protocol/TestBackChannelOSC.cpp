@@ -6,8 +6,6 @@
 #include "BackChannel/Protocol/OSC/BackChannelOSC.h"
 #include "EngineMinimal.h"
 
-PRAGMA_DISABLE_OPTIMIZATION
-
 #if WITH_DEV_AUTOMATION_TESTS
 
 class FBackChannelTestOSCBase : public FAutomationTestBase
@@ -17,8 +15,6 @@ public:
 
 	FBackChannelTestOSCBase(const FString& InName, const bool bInComplexTask)
 		: FAutomationTestBase(InName, bInComplexTask) {}
-
-	
 
 };
 
@@ -96,7 +92,41 @@ bool FBackChannelTestOSCMessage::RunTest(const FString& Parameters)
 
 bool FBackChannelTestOSCBundle::RunTest(const FString& Parameters)
 {
-	FBackChannelOSCBundle Bundle(OSCPacketMode::Write);
+	TSharedPtr<FBackChannelOSCBundle> Bundle = MakeShareable(new FBackChannelOSCBundle(OSCPacketMode::Write));
+
+	FString TestString1 = TEXT("Hello World!");
+	FString TestString2 = TEXT("Hello World Again!");
+
+	Bundle->AddElement(*TestString1, (TestString1.Len() + 1) * sizeof(TCHAR));
+	Bundle->AddElement(*TestString2, (TestString2.Len() + 1) * sizeof(TCHAR));
+
+	// first loop tests the bundle we just constructed, second loop tests it
+	// after serializing to and from a buffer
+	for (int i = 0; i < 2; i++)
+	{
+		check(Bundle->GetElementCount() == 2);
+
+		TArray<uint8> Data1, Data2;
+		Data1 = Bundle->GetElement(0);
+		Data2 = Bundle->GetElement(1);
+
+		const TCHAR* pString1 = (const TCHAR*)Data1.GetData();
+		const TCHAR* pString2 = (const TCHAR*)Data2.GetData();
+
+		check(TestString1 == pString1);
+		check(TestString2 == pString2);
+
+		TArray<uint8> BundleData;
+		
+		// write to the buffer
+		Bundle->WriteToBuffer(BundleData);
+
+		TSharedPtr<FBackChannelOSCPacket> Packet = FBackChannelOSCPacket::CreateFromBuffer(BundleData.GetData(), BundleData.Num());
+
+		check(Packet->GetType() == OSCPacketType::Bundle);
+
+		Bundle = StaticCastSharedPtr<FBackChannelOSCBundle>(Packet);
+	}
 
 	return true;
 }
@@ -104,5 +134,3 @@ bool FBackChannelTestOSCBundle::RunTest(const FString& Parameters)
 
 
 #endif // WITH_DEV_AUTOMATION_TESTS
-
-PRAGMA_ENABLE_OPTIMIZATION

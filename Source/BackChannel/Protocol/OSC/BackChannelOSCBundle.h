@@ -22,12 +22,25 @@ public:
 
 	virtual int32 GetSize() const override;
 
-protected:
+	void AddElement(const void* InData, const int32 InSize);
+
+	int32 GetElementCount() const;
+
+	const TArray<uint8>& GetElement(const int32 Index) const;
+
+	void WriteToBuffer(TArray<uint8>& OutBuffer);
+
+	static TSharedPtr<FBackChannelOSCBundle> CreateFromBuffer(const void* Data, int32 DataLength);
 
 protected:
 
-	OSCPacketMode		Mode;
-	int64				TimeTag;
-	int32				ElementSize;
-	TArray<uint8>		ElementData;
+protected:
+
+	typedef TArray<uint8> ElementData;
+
+	OSCPacketMode			Mode;
+	int64					TimeTag;
+	TArray<ElementData>		Elements;
+
+	static ANSICHAR*		BundleHeader;
 };

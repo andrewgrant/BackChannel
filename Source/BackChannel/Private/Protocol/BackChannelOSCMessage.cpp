@@ -6,8 +6,6 @@
 #include "BackChannel/Protocol/OSC/BackChannelOSCMessage.h"
 #include "BackChannel/Private/BackChannelCommon.h"
 
-PRAGMA_DISABLE_OPTIMIZATION
-
 FBackChannelOSCMessage::FBackChannelOSCMessage(OSCPacketMode InMode)
 {
 	Mode = InMode;
@@ -188,5 +186,3 @@ TSharedPtr<FBackChannelOSCMessage> FBackChannelOSCMessage::CreateFromBuffer(cons
 
 	return NewMessage;
 }
-
-PRAGMA_ENABLE_OPTIMIZATION
