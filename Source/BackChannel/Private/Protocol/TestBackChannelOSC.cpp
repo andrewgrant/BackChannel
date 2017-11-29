@@ -22,6 +22,9 @@ IMPLEMENT_CUSTOM_SIMPLE_AUTOMATION_TEST(FBackChannelTestOSCMessage, FBackChannel
 
 IMPLEMENT_CUSTOM_SIMPLE_AUTOMATION_TEST(FBackChannelTestOSCBundle, FBackChannelTestOSCBase, "BackChannel.TestOSCBundle", EAutomationTestFlags::ApplicationContextMask | EAutomationTestFlags::EngineFilter)
 
+IMPLEMENT_CUSTOM_SIMPLE_AUTOMATION_TEST(FBackChannelTestOSCBundleWithMessages, FBackChannelTestOSCBase, "BackChannel.TestOSCBundleWithMessages", EAutomationTestFlags::ApplicationContextMask | EAutomationTestFlags::EngineFilter)
+
+
 bool FBackChannelTestOSCMessage::RunTest(const FString& Parameters)
 {
 	FBackChannelOSCMessage Message(OSCPacketMode::Write);
@@ -127,6 +130,60 @@ bool FBackChannelTestOSCBundle::RunTest(const FString& Parameters)
 
 		Bundle = StaticCastSharedPtr<FBackChannelOSCBundle>(Packet);
 	}
+
+	return true;
+}
+
+bool FBackChannelTestOSCBundleWithMessages::RunTest(const FString& Parameters)
+{
+	TSharedPtr<FBackChannelOSCMessage> Msg1 = MakeShareable(new FBackChannelOSCMessage(OSCPacketMode::Write));
+	TSharedPtr<FBackChannelOSCMessage> Msg2 = MakeShareable(new FBackChannelOSCMessage(OSCPacketMode::Write));
+
+	FString Msg1Test = TEXT("This is Message 1");
+	FString Msg2Test = TEXT("This is Message 2");
+
+	(*Msg1) << Msg1Test;
+	*Msg2 << Msg2Test;
+
+	TSharedPtr<FBackChannelOSCBundle> Bundle = MakeShareable(new FBackChannelOSCBundle(OSCPacketMode::Write));
+
+	TArray<uint8> Msg1Buffer, Msg2Buffer;
+	Msg1->WriteToBuffer(Msg1Buffer);
+	Msg2->WriteToBuffer(Msg2Buffer);
+
+	Bundle->AddElement(Msg1Buffer.GetData(), Msg1Buffer.Num());
+	Bundle->AddElement(Msg2Buffer.GetData(), Msg2Buffer.Num());
+
+	TArray<uint8> BundleBuffer;
+	Bundle->WriteToBuffer(BundleBuffer);
+
+	TSharedPtr<FBackChannelOSCPacket> RecreatedPacket = FBackChannelOSCPacket::CreateFromBuffer(BundleBuffer.GetData(), BundleBuffer.Num());
+
+	check(RecreatedPacket->GetType() == OSCPacketType::Bundle);
+
+	TSharedPtr<FBackChannelOSCBundle> RecreatedBuffer = StaticCastSharedPtr<FBackChannelOSCBundle>(RecreatedPacket);
+
+	check(RecreatedBuffer->GetElementCount() == 2);
+
+	const TArray<uint8>& Element1 = RecreatedBuffer->GetElement(0);
+	const TArray<uint8>& Element2 = RecreatedBuffer->GetElement(1);
+
+	check(FBackChannelOSCPacket::GetType(Element1.GetData(), Element1.Num()) == OSCPacketType::Message);
+	check(FBackChannelOSCPacket::GetType(Element2.GetData(), Element2.Num()) == OSCPacketType::Message);
+
+	TSharedPtr<FBackChannelOSCMessage> RecreatedMsg1 = FBackChannelOSCMessage::CreateFromBuffer(Element1.GetData(), Element1.Num());
+	TSharedPtr<FBackChannelOSCMessage> RecreatedMsg2 = FBackChannelOSCMessage::CreateFromBuffer(Element2.GetData(), Element2.Num());
+
+	check(RecreatedMsg1.IsValid());
+	check(RecreatedMsg2.IsValid());
+
+	FString OutMsg1Text, OutMsg2Text;
+
+	*RecreatedMsg1 << OutMsg1Text;
+	*RecreatedMsg2 << OutMsg2Text;
+
+	check(OutMsg1Text == Msg1Test);
+	check(OutMsg2Text == Msg2Test);
 
 	return true;
 }

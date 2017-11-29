@@ -17,7 +17,7 @@ OSCPacketType FBackChannelOSCPacket::GetType(const void* Data, int32 DataLength)
 	}
 
 	const ANSICHAR* BundleIdentifier = "#bundle";
-	const ANSICHAR* MessageIdentifier = "/";
+	const ANSICHAR* MessageIdentifier = "";		// need to check whether "" is valid or it requires at least /
 
 	const int32 MessageIdentifierLen = FCStringAnsi::Strlen(MessageIdentifier);
 

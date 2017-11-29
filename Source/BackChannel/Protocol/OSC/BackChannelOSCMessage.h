@@ -85,11 +85,11 @@ public:
 	{
 		return ((ArgSize + 3) / 4) * 4;
 	}
-
-	
 	void WriteToBuffer(TArray<uint8>& Buffer);
 
 	static TSharedPtr<FBackChannelOSCMessage> CreateFromBuffer(const void* Data, int32 DataLength);
+
+	bool IsWriting() const { return Mode == OSCPacketMode::Write; }
 
 protected:
 
