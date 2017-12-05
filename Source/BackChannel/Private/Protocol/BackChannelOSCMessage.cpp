@@ -13,6 +13,13 @@ FBackChannelOSCMessage::FBackChannelOSCMessage(OSCPacketMode InMode)
 	BufferIndex = 0;
 }
 
+
+FBackChannelOSCMessage::FBackChannelOSCMessage(const TCHAR* Address)
+	: FBackChannelOSCMessage(OSCPacketMode::Write)
+{
+	SetAddress(Address);
+}
+
 FBackChannelOSCMessage::~FBackChannelOSCMessage()
 {
 }
@@ -41,9 +48,10 @@ void FBackChannelOSCMessage::SetAddress(const TCHAR* InAddress)
 	Address = InAddress;
 }
 
-void FBackChannelOSCMessage::SerializeString(FString& Value)
+void FBackChannelOSCMessage::Read(FString& Value)
 {
-	if (Mode == OSCPacketMode::Write)
+	check(IsReading());
+	/*if (Mode == OSCPacketMode::Write)
 	{
 		// string should be null-terminated so allow space for that then
 		// terminate
@@ -53,7 +61,7 @@ void FBackChannelOSCMessage::SerializeString(FString& Value)
 		SerializeWrite(TEXT('s'), TCHAR_TO_ANSI(*Value), StringLen + 1);
 		Buffer[StartingIndex + StringLen] = 0;
 	}
-	else
+	else*/
 	{
 		TCHAR CurrentTag = TagString[TagIndex];
 
@@ -86,7 +94,7 @@ void FBackChannelOSCMessage::Serialize(const TCHAR Code, void* InData, int32 InS
 	}
 }
 
-void FBackChannelOSCMessage::SerializeWrite(const TCHAR Code, void* InData, int32 InSize)
+void FBackChannelOSCMessage::SerializeWrite(const TCHAR Code, const void* InData, int32 InSize)
 {
 	TagString += Code;
 

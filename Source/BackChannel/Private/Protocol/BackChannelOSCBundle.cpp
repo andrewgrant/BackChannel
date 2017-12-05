@@ -6,7 +6,7 @@
 #include "BackChannel/Protocol/OSC/BackChannelOSCBundle.h"
 #include "BackChannel/Private/BackChannelCommon.h"
 
-ANSICHAR* FBackChannelOSCBundle::BundleHeader = "#bundle";
+const ANSICHAR* FBackChannelOSCBundle::BundleHeader = "#bundle";
 
 FBackChannelOSCBundle::FBackChannelOSCBundle(OSCPacketMode InMode)
 {

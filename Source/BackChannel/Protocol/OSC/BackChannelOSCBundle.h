@@ -42,5 +42,5 @@ protected:
 	int64					TimeTag;
 	TArray<ElementData>		Elements;
 
-	static ANSICHAR*		BundleHeader;
+	static const ANSICHAR*		BundleHeader;
 };

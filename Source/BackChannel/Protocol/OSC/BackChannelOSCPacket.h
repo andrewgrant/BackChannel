@@ -19,7 +19,7 @@ enum class OSCPacketType
 	Bundle
 };
 
-class FBackChannelOSCPacket
+class BACKCHANNEL_API FBackChannelOSCPacket
 {
 public:
 

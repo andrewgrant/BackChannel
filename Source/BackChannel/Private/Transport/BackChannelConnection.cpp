@@ -22,9 +22,9 @@ FBackChannelConnection::~FBackChannelConnection()
 
 bool FBackChannelConnection::Connect(const TCHAR* InEndPoint)
 {
-	FSocket* Socket = FTcpSocketBuilder(TEXT("BackChannel Client"));
+	FSocket* NewSocket = FTcpSocketBuilder(TEXT("BackChannel Client"));
 
-	if (Socket == nullptr)
+	if (NewSocket == nullptr)
 	{
 		return false;
 	}
@@ -32,14 +32,14 @@ bool FBackChannelConnection::Connect(const TCHAR* InEndPoint)
 	FIPv4Endpoint EndPoint;
 	FIPv4Endpoint::Parse(InEndPoint, EndPoint);
 
-	if (!Socket->Connect(*EndPoint.ToInternetAddr()))
+	if (!NewSocket->Connect(*EndPoint.ToInternetAddr()))
 	{
-		ISocketSubsystem::Get(PLATFORM_SOCKETSUBSYSTEM)->DestroySocket(Socket);
+		ISocketSubsystem::Get(PLATFORM_SOCKETSUBSYSTEM)->DestroySocket(NewSocket);
 
 		return false;
 	}
 
-	return Attach(Socket);
+	return Attach(NewSocket);
 }
 
 bool FBackChannelConnection::Attach(FSocket* InSocket)

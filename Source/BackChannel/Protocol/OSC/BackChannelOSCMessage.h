@@ -7,11 +7,14 @@
 #include "BackChannel/Protocol/OSC/BackChannelOSCPacket.h"
 
 
-class FBackChannelOSCMessage : public FBackChannelOSCPacket
+class BACKCHANNEL_API FBackChannelOSCMessage : public FBackChannelOSCPacket
 {
 public:
 
 	FBackChannelOSCMessage(OSCPacketMode InMode);
+
+	FBackChannelOSCMessage(const TCHAR* Address);
+
 	virtual ~FBackChannelOSCMessage();
 
 	FBackChannelOSCMessage(FBackChannelOSCMessage&& RHS);
@@ -39,47 +42,88 @@ public:
 
 	void	SetAddress(const TCHAR* Address);
 
-	FBackChannelOSCMessage& operator << (int32& Value)
+	//! Int32 read/write
+
+	void Write(const int32 Value)
 	{
-		SerializeInt32(Value);
-		return *this;
+		check(IsWriting());
+		SerializeWrite(TEXT('i'), &Value, sizeof(Value));
 	}
 
-	FBackChannelOSCMessage& operator << (float& Value)
+	void Read(int32& Value)
 	{
-		SerializeFloat(Value);
-		return *this;
+		check(IsReading());
+		SerializeRead(TEXT('i'), &Value, sizeof(Value));
 	}
 
-	FBackChannelOSCMessage& operator << (FString& Value)
+	//! Float read/write
+
+	void Write(const float Value)
 	{
-		SerializeString(Value);
-		return *this;
+		check(IsWriting());
+		SerializeWrite(TEXT('f'), &Value, sizeof(Value));
 	}
 
-	template <typename T>
-	FBackChannelOSCMessage& operator << (TArray<T>& Value)
+	void Read(float& OutValue)
 	{
-		SerializeBlob(Value.GetData(), Value.Num() * sizeof(T));
-		return *this;
+		check(IsReading());
+		SerializeRead(TEXT('f'), &OutValue, sizeof(OutValue));
 	}
 
-	void SerializeInt32(int32& Value)
+	//! String read/write (multiple forms of write for TCHAR*'s
+
+	void Write(const FString& Value)
 	{
-		Serialize(TEXT('i'), &Value, sizeof(Value));
+		Write(*Value);
 	}
 
-	void SerializeFloat(float& Value)
+	void Write(const TCHAR* Value)
 	{
-		Serialize(TEXT('f'), &Value, sizeof(Value));
+		SerializeWrite(TEXT('s'), TCHAR_TO_ANSI(Value), FCString::Strlen(Value) + 1);
 	}
 
-	void SerializeBlob(void* InBlob, int32 BlobSize)
+	void Read(FString& OutValue);
+
+	//! Raw data blobs
+
+	void Write(const void* InBlob, int32 BlobSize)
 	{
-		Serialize(TEXT('b'), InBlob, BlobSize);
+		check(IsWriting());
+		SerializeWrite(TEXT('b'), InBlob, BlobSize);
 	}
 
-	void SerializeString(FString& Value);
+	void Read(void* InBlob, int32 BlobSize)
+	{
+		check(IsReading());
+		SerializeRead(TEXT('b'), InBlob, BlobSize);
+	}
+
+	
+	
+	template<typename T>
+	void Serialize(T& Value)
+	{
+		if (IsWriting())
+		{
+			Write(Value);
+		}
+		else
+		{
+			Read(Value);
+		}
+	}
+
+	void Serialize(void* InBlob, int32 BlobSize)
+	{
+		if (IsReading())
+		{
+			Read(InBlob, BlobSize);
+		}
+		else
+		{
+			Write(InBlob, BlobSize);
+		}
+	}
 
 	static int32 RoundedArgumentSize(int32 ArgSize)
 	{
@@ -90,13 +134,14 @@ public:
 	static TSharedPtr<FBackChannelOSCMessage> CreateFromBuffer(const void* Data, int32 DataLength);
 
 	bool IsWriting() const { return Mode == OSCPacketMode::Write; }
+	bool IsReading() const { return Mode == OSCPacketMode::Read; }
 
 protected:
 
 	void Serialize(const TCHAR Code, void* InData, int32 InSize);
 
 	void SerializeRead(const TCHAR Code, void* InData, int32 InSize);
-	void SerializeWrite(const TCHAR Code, void* InData, int32 InSize);
+	void SerializeWrite(const TCHAR Code, const void* InData, int32 InSize);
 
 protected:
 
@@ -106,5 +151,78 @@ protected:
 	int					TagIndex;
 	int					BufferIndex;
 	TArray<uint8>		Buffer;
-	
 };
+
+FBackChannelOSCMessage& operator << (FBackChannelOSCMessage& Msg, int32& Value)
+{
+	Msg.Serialize(Value);
+	return Msg;
+}
+
+FBackChannelOSCMessage& operator << (FBackChannelOSCMessage& Msg, float& Value)
+{
+	Msg.Serialize(Value);
+	return Msg;
+}
+
+FBackChannelOSCMessage& operator << (FBackChannelOSCMessage& Msg, const bool Value)
+{
+	check(Msg.IsWriting());
+	int32 IntValue = Value ? 1 : 0;
+	Msg.Serialize(IntValue);
+	return Msg;
+}
+
+FBackChannelOSCMessage& operator << (FBackChannelOSCMessage& Msg, bool& Value)
+{
+	if (Msg.IsWriting())
+	{
+		int32 IntValue = Value ? 1 : 0;
+		Msg.Serialize(IntValue);
+	}
+	else
+	{
+		int32 IntValue(0);
+		Msg.Serialize(IntValue);
+		Value = IntValue == 0 ? false : true;
+	}
+	return Msg;
+}
+
+
+FBackChannelOSCMessage& operator << (FBackChannelOSCMessage& Msg, const TCHAR Value)
+{
+	check(Msg.IsWriting());
+	int32 IntValue = Value;
+	Msg.Serialize(IntValue);
+	return Msg;
+}
+
+FBackChannelOSCMessage& operator << (FBackChannelOSCMessage& Msg, TCHAR& Value)
+{
+	if (Msg.IsWriting())
+	{
+		int32 IntValue = Value;
+		Msg.Serialize(IntValue);
+	}
+	else
+	{
+		int32 IntValue(0);
+		Msg.Serialize(IntValue);
+		Value = (TCHAR)IntValue;
+	}
+	return Msg;
+}
+
+FBackChannelOSCMessage& operator << (FBackChannelOSCMessage& Msg, FString& Value)
+{
+	Msg.Serialize(Value);
+	return Msg;
+}
+
+template <typename T>
+FBackChannelOSCMessage& operator << (FBackChannelOSCMessage& Msg, TArray<T>& Value)
+{
+	Msg.Serialize(Value.GetData(), Value.Num() * sizeof(T));
+	return Msg;
+}
