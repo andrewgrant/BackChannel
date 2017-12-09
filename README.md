@@ -1,5 +1,5 @@
 # BackChannel
 
-BackChannel is an experimetal plugin that provides external tools and apps the ability to query and push data into a running Unreal session.
+BackChannel is an experimetal plugin that allows external tools and apps to query for and push data into a running Unreal session.
 
-Short term focus is OSC over TCP/IP, though eventually I'd like to support JSON over an HTTP REST interface.
+The goal is to support 2-3 ubiquitous protocols where implementations can be easily created or found for popular languages. The short term focus is OSC over TCP/IP and JSON REST over HTTP.
