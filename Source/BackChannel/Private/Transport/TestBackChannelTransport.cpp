@@ -1,10 +1,9 @@
 // Copyright 2017 Andrew Grant
-// Unless explicitly stated otherwise all files in this repository 
+// Unless explicitly stated otherwise all files in this repo
 // are licensed under BSD License 2.0. All Rights Reserved.
 
+#include "BackChannel/Private/BackChannelCommon.h"
 #include "BackChannel/Transport/IBackChannelTransport.h"
-#include "EngineMinimal.h"
-
 
 #if WITH_DEV_AUTOMATION_TESTS
 
@@ -20,7 +19,7 @@ public:
 	{
 		if (IBackChannelTransport* BC = IBackChannelTransport::Get())
 		{
-			BackChannelListener = BC->CreateListener();
+			BackChannelListener = BC->CreateListener(IBackChannelTransport::TCP);
 		}
 	}
 
@@ -28,7 +27,7 @@ public:
 	{
 		if (IBackChannelTransport* BC = IBackChannelTransport::Get())
 		{
-			BackChannelConnection1 = BC->CreateConnection();
+			BackChannelConnection1 = BC->CreateConnection(IBackChannelTransport::TCP);
 		}
 	}
 	

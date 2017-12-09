@@ -13,7 +13,7 @@ class FSocket;
 * BackChannelClient implementation.
 *
 */
-class FBackChannelConnection : public IBackChannelConnection
+class BACKCHANNEL_API FBackChannelConnection : public IBackChannelConnection
 {
 public:
 
@@ -25,6 +25,8 @@ public:
 	bool Attach(FSocket* InSocket);
 
 	virtual void Close() override;
+
+	virtual bool IsConnected() const;
 
 	virtual int32 SendData(const void* InData, const int32 InSize) override;
 

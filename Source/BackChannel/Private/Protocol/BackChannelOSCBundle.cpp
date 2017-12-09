@@ -2,9 +2,9 @@
 // Unless explicitly stated otherwise all files in this repository 
 // are licensed under BSD License 2.0. All Rights Reserved.
 
-#include "BackChannel/Transport/IBackChannelTransport.h"
-#include "BackChannel/Protocol/OSC/BackChannelOSCBundle.h"
 #include "BackChannel/Private/BackChannelCommon.h"
+#include "BackChannel/Protocol/OSC/BackChannelOSCBundle.h"
+
 
 const ANSICHAR* FBackChannelOSCBundle::BundleHeader = "#bundle";
 
@@ -71,7 +71,14 @@ const TArray<uint8>& FBackChannelOSCBundle::GetElement(const int32 Index) const
 	return Elements[Index];
 }
 
-void FBackChannelOSCBundle::WriteToBuffer(TArray<uint8>& OutBuffer)
+TArray<uint8> FBackChannelOSCBundle::WriteToBuffer() const
+{
+	TArray<uint8> Buffer;
+	WriteToBuffer(Buffer);
+	return Buffer;
+}
+
+void FBackChannelOSCBundle::WriteToBuffer(TArray<uint8>& OutBuffer) const
 {
 	const int32 Size = GetSize();
 	const int32 BufferSize = OutBuffer.Num();

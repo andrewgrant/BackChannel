@@ -2,9 +2,9 @@
 // Unless explicitly stated otherwise all files in this repository 
 // are licensed under BSD License 2.0. All Rights Reserved.
 
-#include "BackChannel/Transport/IBackChannelTransport.h"
-#include "BackChannel/Protocol/OSC/BackChannelOSCMessage.h"
 #include "BackChannel/Private/BackChannelCommon.h"
+#include "BackChannel/Protocol/OSC/BackChannelOSCMessage.h"
+
 
 FBackChannelOSCMessage::FBackChannelOSCMessage(OSCPacketMode InMode)
 {
@@ -14,10 +14,10 @@ FBackChannelOSCMessage::FBackChannelOSCMessage(OSCPacketMode InMode)
 }
 
 
-FBackChannelOSCMessage::FBackChannelOSCMessage(const TCHAR* Address)
+FBackChannelOSCMessage::FBackChannelOSCMessage(const TCHAR* InAddress)
 	: FBackChannelOSCMessage(OSCPacketMode::Write)
 {
-	SetAddress(Address);
+	SetAddress(InAddress);
 }
 
 FBackChannelOSCMessage::~FBackChannelOSCMessage()
@@ -46,6 +46,13 @@ FBackChannelOSCMessage& FBackChannelOSCMessage::operator=(FBackChannelOSCMessage
 void FBackChannelOSCMessage::SetAddress(const TCHAR* InAddress)
 {
 	Address = InAddress;
+}
+
+void FBackChannelOSCMessage::ResetRead()
+{
+	check(IsReading());
+	TagIndex = 0;
+	BufferIndex = 0;
 }
 
 void FBackChannelOSCMessage::Read(FString& Value)
@@ -145,7 +152,14 @@ int32 FBackChannelOSCMessage::GetSize() const
 }
 
 
-void FBackChannelOSCMessage::WriteToBuffer(TArray<uint8>& OutBuffer)
+TArray<uint8> FBackChannelOSCMessage::WriteToBuffer() const
+{
+	TArray<uint8> OutBuffer;
+	WriteToBuffer(OutBuffer);
+	return OutBuffer;
+}
+
+void FBackChannelOSCMessage::WriteToBuffer(TArray<uint8>& OutBuffer) const
 {
 	const int kRequiredSize = GetSize();
 
@@ -194,3 +208,55 @@ TSharedPtr<FBackChannelOSCMessage> FBackChannelOSCMessage::CreateFromBuffer(cons
 
 	return NewMessage;
 }
+
+
+FBackChannelOSCMessage& operator << (FBackChannelOSCMessage& Msg, int32& Value)
+{
+	Msg.Serialize(Value);
+	return Msg;
+}
+
+FBackChannelOSCMessage& operator << (FBackChannelOSCMessage& Msg, float& Value)
+{
+	Msg.Serialize(Value);
+	return Msg;
+}
+
+FBackChannelOSCMessage& operator << (FBackChannelOSCMessage& Msg, bool& Value)
+{
+	if (Msg.IsWriting())
+	{
+		int32 IntValue = Value ? 1 : 0;
+		Msg.Serialize(IntValue);
+	}
+	else
+	{
+		int32 IntValue(0);
+		Msg.Serialize(IntValue);
+		Value = IntValue == 0 ? false : true;
+	}
+	return Msg;
+}
+
+FBackChannelOSCMessage& operator << (FBackChannelOSCMessage& Msg, TCHAR& Value)
+{
+	if (Msg.IsWriting())
+	{
+		int32 IntValue = Value;
+		Msg.Serialize(IntValue);
+	}
+	else
+	{
+		int32 IntValue(0);
+		Msg.Serialize(IntValue);
+		Value = (TCHAR)IntValue;
+	}
+	return Msg;
+}
+
+FBackChannelOSCMessage& operator << (FBackChannelOSCMessage& Msg, FString& Value)
+{
+	Msg.Serialize(Value);
+	return Msg;
+}
+

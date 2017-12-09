@@ -8,8 +8,7 @@
 #include "IBackChannelListener.h"
 #include "IBackChannelConnection.h"
 
-
-class IBackChannelTransport : public IModuleInterface
+class BACKCHANNEL_API IBackChannelTransport : public IModuleInterface
 {
 public:
 
@@ -23,9 +22,13 @@ public:
 		return FModuleManager::LoadModulePtr<IBackChannelTransport>("BackChannel");
 	}
 
-	virtual TSharedPtr<IBackChannelListener> CreateListener() = 0;
+	virtual TSharedPtr<IBackChannelListener> CreateListener(const int32 Type) = 0;
 
-	virtual TSharedPtr<IBackChannelConnection> CreateConnection() = 0;
+	virtual TSharedPtr<IBackChannelConnection> CreateConnection(const int32 Type) = 0;
+
+public:
+
+	static const int TCP;
 
 protected:
 

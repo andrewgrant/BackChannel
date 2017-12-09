@@ -4,6 +4,7 @@
 
 #pragma once
 
+#include "CoreMinimal.h"
 #include "EngineMinimal.h"
 
-BACKCHANNEL_API DECLARE_LOG_CATEGORY_EXTERN(LogBackChannel, Log, All);
+BACKCHANNEL_API DECLARE_LOG_CATEGORY_EXTERN(LogBackChannel, Verbose, All);

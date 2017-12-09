@@ -2,9 +2,9 @@
 // Unless explicitly stated otherwise all files in this repository 
 // are licensed under BSD License 2.0. All Rights Reserved.
 
-#include "BackChannel/Transport/IBackChannelTransport.h"
-#include "BackChannel/Protocol/OSC/BackChannelOSCPacket.h"
 #include "BackChannel/Private/BackChannelCommon.h"
+#include "BackChannel/Protocol/OSC/BackChannelOSCPacket.h"
+
 
 
 OSCPacketType FBackChannelOSCPacket::GetType(const void* Data, int32 DataLength)

@@ -2,8 +2,8 @@
 // Unless explicitly stated otherwise all files in this repository 
 // are licensed under BSD License 2.0. All Rights Reserved.
 
-#include "BackChannel/Transport/IBackChannelTransport.h"
 #include "BackChannel/Private/BackChannelCommon.h"
+#include "BackChannel/Transport/IBackChannelTransport.h"
 #include "BackChannel/Private/Transport/BackChannelConnection.h"
 #include "Common/TcpSocketBuilder.h"
 
@@ -55,6 +55,11 @@ void FBackChannelConnection::Close()
 		Socket->Close();
 		Socket = nullptr;
 	}
+}
+
+bool FBackChannelConnection::IsConnected() const
+{
+	return Socket != nullptr && Socket->GetConnectionState() == ESocketConnectionState::SCS_Connected;
 }
 
 int32 FBackChannelConnection::SendData(const void* InData, const int32 InSize)

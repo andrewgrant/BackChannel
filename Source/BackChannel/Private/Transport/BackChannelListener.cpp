@@ -2,8 +2,8 @@
 // Unless explicitly stated otherwise all files in this repository 
 // are licensed under BSD License 2.0. All Rights Reserved.
 
-#include "BackChannel/Transport/IBackChannelTransport.h"
 #include "BackChannel/Private/BackChannelCommon.h"
+#include "BackChannel/Transport/IBackChannelTransport.h"
 #include "BackChannel/Private/Transport/BackChannelListener.h"
 #include "BackChannel/Private/Transport/BackChannelConnection.h"
 
@@ -46,7 +46,7 @@ bool FBackChannelListener::Listen(const uint16 Port)
 
 		if (ConnectionRequestDelegate.IsBound())
 		{
-			TSharedPtr<FBackChannelConnection> NewConnection = MakeShareable(new FBackChannelConnection());
+			TSharedRef<FBackChannelConnection> NewConnection = MakeShareable(new FBackChannelConnection());
 
 			NewConnection->Attach(InSocket);
 			SocketAccepted = ConnectionRequestDelegate.Execute(NewConnection);		

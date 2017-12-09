@@ -29,6 +29,10 @@ public:
 
 	virtual OSCPacketType GetType() const = 0;
 
+	virtual TArray<uint8> WriteToBuffer() const =0;
+
+	virtual void WriteToBuffer(TArray<uint8>& Buffer) const = 0;
+
 	static OSCPacketType GetType(const void* Data, int32 DataLength);
 
 	static TSharedPtr<FBackChannelOSCPacket> CreateFromBuffer(const void* Data, int32 DataLength);

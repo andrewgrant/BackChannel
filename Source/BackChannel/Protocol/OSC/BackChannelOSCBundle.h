@@ -28,7 +28,9 @@ public:
 
 	const TArray<uint8>& GetElement(const int32 Index) const;
 
-	void WriteToBuffer(TArray<uint8>& OutBuffer);
+	virtual TArray<uint8> WriteToBuffer() const override;
+
+	virtual void WriteToBuffer(TArray<uint8>& Buffer) const override;
 
 	static TSharedPtr<FBackChannelOSCBundle> CreateFromBuffer(const void* Data, int32 DataLength);
 

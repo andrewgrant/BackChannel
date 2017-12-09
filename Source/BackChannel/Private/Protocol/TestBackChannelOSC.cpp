@@ -2,9 +2,10 @@
 // Unless explicitly stated otherwise all files in this repository 
 // are licensed under BSD License 2.0. All Rights Reserved.
 
+#include "BackChannel/Private/BackChannelCommon.h"
 #include "BackChannel/Transport/IBackChannelTransport.h"
 #include "BackChannel/Protocol/OSC/BackChannelOSC.h"
-#include "EngineMinimal.h"
+
 
 #if WITH_DEV_AUTOMATION_TESTS
 

@@ -7,7 +7,7 @@
 
 #include "IBackChannelConnection.h"
 
-DECLARE_DELEGATE_RetVal_OneParam(bool, FBackChannelConnectionRequest, TSharedPtr<IBackChannelConnection>)
+DECLARE_DELEGATE_RetVal_OneParam(bool, FBackChannelConnectionRequest, TSharedRef<IBackChannelConnection>)
 
 class IBackChannelListener
 {
