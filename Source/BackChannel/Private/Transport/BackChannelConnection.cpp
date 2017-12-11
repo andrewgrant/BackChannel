@@ -32,12 +32,16 @@ bool FBackChannelConnection::Connect(const TCHAR* InEndPoint)
 	FIPv4Endpoint EndPoint;
 	FIPv4Endpoint::Parse(InEndPoint, EndPoint);
 
+	NewSocket->SetNonBlocking(false);
+
 	if (!NewSocket->Connect(*EndPoint.ToInternetAddr()))
 	{
 		ISocketSubsystem::Get(PLATFORM_SOCKETSUBSYSTEM)->DestroySocket(NewSocket);
 
 		return false;
 	}
+
+	NewSocket->SetNonBlocking(true);
 
 	return Attach(NewSocket);
 }
@@ -66,7 +70,7 @@ int32 FBackChannelConnection::SendData(const void* InData, const int32 InSize)
 {
 	if (!Socket)
 	{
-		return 0;
+		return -1;
 	}
 
 	int32 BytesSent(0);

@@ -10,17 +10,17 @@
 FBackChannelOSCConnection::FBackChannelOSCConnection(TSharedRef<IBackChannelConnection> InConnection)
 	: Connection(InConnection)
 {
-
+	LastActivityTime = 0;
+	LastPingTime = 0;
 }
 
 FBackChannelOSCConnection::~FBackChannelOSCConnection()
 {
+	UE_LOG(LogBackChannel, Verbose, TEXT("Destroying OSC Connection"));
 	if (IsRunning)
 	{
 		Stop();
 	}
-
-	Connection->Close();
 }
 
 bool FBackChannelOSCConnection::Start()
@@ -36,7 +36,7 @@ bool FBackChannelOSCConnection::Start()
 		IsRunning = true;
 	}
 
-	UE_LOG(LogBackChannel, Log, TEXT("Started OSS Connection"));
+	UE_LOG(LogBackChannel, Verbose, TEXT("Started OSC Connection"));
 
 	return Thread != nullptr;
 }
@@ -55,22 +55,27 @@ uint32 FBackChannelOSCConnection::Run()
 
 	// OSC connections expect a size followed by payload for TCP connections
 	int32 ExpectedDataSize = 4;
+	int32 ReceivedDataSize = 0;
+
+	const int kPingTime = 5;
+	const int kTimeout = 10;
+
+	LastActivityTime = FPlatformTime::Seconds();
+	LastPingTime = FPlatformTime::Seconds();
+
+	UE_LOG(LogBackChannel, Verbose, TEXT("OSC Connection is Running."));
 
 	while (ExitRequested == false)
-	{
-		FPlatformProcess::SleepNoStats(0);
-		
-		int32 Received = Connection->ReceiveData(Buffer.GetData(), ExpectedDataSize);
+	{		
+		int32 Received = Connection->ReceiveData(Buffer.GetData() + ReceivedDataSize, ExpectedDataSize-ReceivedDataSize);
 
-		// TODO - move to blocking sockets?
-		if (Received)
+		if (Received > 0)
 		{
-			if (Received != ExpectedDataSize)
-			{
-				UE_LOG(LogBackChannel, Error, TEXT("Received unexpected data. Will skip all data till next packet"), Received);
-				ExpectedDataSize = 4;
-			}
-			else
+			LastActivityTime = FPlatformTime::Seconds();
+
+			ReceivedDataSize += Received;
+
+			if (ReceivedDataSize == ExpectedDataSize)
 			{
 				if (ExpectedDataSize == 4)
 				{
@@ -91,33 +96,64 @@ uint32 FBackChannelOSCConnection::Run()
 
 					if (Packet.IsValid())
 					{
-						FScopeLock Lock(&ReceivedPacketsMutex);
+						FScopeLock Lock(&ReceiveMutex);
 						ReceivedPackets.Add(Packet);
 					}
 
 					ExpectedDataSize = 4;
 				}
+
+				ReceivedDataSize = 0;
 			}
 		}
+		else
+		{
+			const float TimeNow = FPlatformTime::Seconds();
+			if (TimeNow - LastPingTime >= kPingTime)
+			{
+				FBackChannelOSCMessage Msg(TEXT("/ping"));
+				SendPacket(Msg);
+				LastPingTime = TimeNow;
+			}
+
+			const float TimeSinceActivity = TimeNow - LastActivityTime;
+			if (TimeSinceActivity >= kTimeout)
+			{
+				UE_LOG(LogBackChannel, Error, TEXT("Connection timed out after %.02 seconds"), TimeSinceActivity);
+				ExitRequested = true;
+			}
+		}
+
+		// switch to blocking?
+		FPlatformProcess::SleepNoStats(0.05);
 	}
 
+	UE_LOG(LogBackChannel, Verbose, TEXT("OSC Connection is exiting."));
 	IsRunning = false;
 	return 0;
 }
 
 void FBackChannelOSCConnection::Stop()
 {
-	ExitRequested = true;
-
-	while (IsRunning)
+	if (IsRunning)
 	{
-		FPlatformProcess::SleepNoStats(0);
+		UE_LOG(LogBackChannel, Verbose, TEXT("Requesting OSC Connection to stop.."));
+
+		ExitRequested = true;
+
+		while (IsRunning)
+		{
+			FPlatformProcess::SleepNoStats(0.01);
+		}
 	}
+
+	UE_LOG(LogBackChannel, Verbose, TEXT("OSC Connection is stopped"));
+	Connection = nullptr;
 }
 
 bool FBackChannelOSCConnection::IsConnected() const
 {
-	return Connection->IsConnected();
+	return IsRunning;
 }
 
 bool FBackChannelOSCConnection::SendPacket(FBackChannelOSCPacket& Packet)
@@ -128,22 +164,32 @@ bool FBackChannelOSCConnection::SendPacket(FBackChannelOSCPacket& Packet)
 
 bool FBackChannelOSCConnection::SendPacketData(const void* Data, const int32 DataLen)
 {
+	FScopeLock Lock(&SendMutex);
+
+	if (!IsConnected())
+	{
+		return false;
+	}
+
 	// write size
 	int32 Sent = 0;
 
 	// TODO - differentiate between TCP / UDP 
 	if (DataLen > 0)
 	{
+		// OSC over TCP requires a size followed by the packet (TODO - combine these?)
 		Connection->SendData(&DataLen, sizeof(DataLen));
 		Sent = Connection->SendData(Data, DataLen);
 
-		if (Sent == DataLen)
+		if (Sent > 0)
 		{
+			LastActivityTime = FPlatformTime::Seconds();
 			UE_LOG(LogBackChannel, Verbose, TEXT("Sent %d bytes of data"), DataLen);
+			
 		}
 		else
 		{
-			UE_LOG(LogBackChannel, Warning, TEXT("Only sent %d bytes of %d packet"), Sent, DataLen);
+			UE_LOG(LogBackChannel, Error, TEXT("Failed to send %d bytes of data"), DataLen);
 		}
 	}
 
@@ -158,7 +204,7 @@ FBackChannelOSCDispatch& FBackChannelOSCConnection::GetDispatchMap()
 
 void FBackChannelOSCConnection::DispatchMessages()
 {
-	FScopeLock Lock(&ReceivedPacketsMutex);
+	FScopeLock Lock(&ReceiveMutex);
 
 	for (auto& Packet : ReceivedPackets)
 	{

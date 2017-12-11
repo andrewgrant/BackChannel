@@ -46,7 +46,7 @@ public:
 
 protected:
 
-	TSharedRef<IBackChannelConnection>  Connection;
+	TSharedPtr<IBackChannelConnection>  Connection;
 
 	FBackChannelOSCDispatch				DispatchMap;
 
@@ -55,5 +55,8 @@ protected:
 	FThreadSafeBool		ExitRequested;
 	FThreadSafeBool		IsRunning;
 
-	FCriticalSection	ReceivedPacketsMutex;
+	FCriticalSection	ReceiveMutex;
+	FCriticalSection	SendMutex;
+	double				LastActivityTime;
+	double				LastPingTime;
 };
