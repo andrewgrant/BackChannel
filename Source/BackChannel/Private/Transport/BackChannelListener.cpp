@@ -34,7 +34,7 @@ bool FBackChannelListener::Listen(const uint16 Port)
 		return false;
 	}
 
-	FIPv4Endpoint Endpoint(FIPv4Address(127, 0, 0, 1), Port);
+	FIPv4Endpoint Endpoint(FIPv4Address::Any, Port);
 
 	Listener = MakeShareable(new FTcpListener(Endpoint));
 

@@ -37,6 +37,14 @@ public:
 
 	FBackChannelOSCDispatch& GetDispatchMap();
 
+	void SetMessageOptions(const TCHAR* Path, int32 MaxQueuedMessages);
+
+	int32 GetMessageLimitForPath(const TCHAR* Path);
+
+	int32 GetMessageCountForPath(const TCHAR* Path);
+
+	void RemoveMessagesWithPath(const TCHAR* Path, const int32 Num = 0);
+
 	void DispatchMessages();
 
 	FString Description()
@@ -51,6 +59,8 @@ protected:
 	FBackChannelOSCDispatch				DispatchMap;
 
 	TArray<TSharedPtr<FBackChannelOSCPacket>> ReceivedPackets;
+
+	TMap<FString, int32> MessageLimits;
 
 	FThreadSafeBool		ExitRequested;
 	FThreadSafeBool		IsRunning;

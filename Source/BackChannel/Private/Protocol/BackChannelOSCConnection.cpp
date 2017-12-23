@@ -7,6 +7,13 @@
 #include "BackChannel/Protocol/OSC/BackChannelOSCConnection.h"
 #include "BackChannel/Protocol/OSC/BackChannelOSC.h"
 
+
+int32 LogIncomingPackets = 1;
+static FAutoConsoleVariableRef CVarLogIncomingPackets(
+	TEXT("backchannel.LogIncomingPackets"), LogIncomingPackets,
+	TEXT("Logs incoming packets"),
+	ECVF_Default);
+
 FBackChannelOSCConnection::FBackChannelOSCConnection(TSharedRef<IBackChannelConnection> InConnection)
 	: Connection(InConnection)
 {
@@ -97,6 +104,37 @@ uint32 FBackChannelOSCConnection::Run()
 					if (Packet.IsValid())
 					{
 						FScopeLock Lock(&ReceiveMutex);
+
+						bool bAddPacket = true;
+
+						if (Packet->GetType() == OSCPacketType::Message)
+						{
+							auto MsgPacket = StaticCastSharedPtr<FBackChannelOSCMessage>(Packet);
+
+							const FString& NewAddress = MsgPacket->GetAddress();
+
+							UE_CLOG(LogIncomingPackets, LogBackChannel, Log, TEXT("Received msg to %s of %d bytes"), *NewAddress, ExpectedDataSize);
+
+							int32 CurrentCount = GetMessageCountForPath(*NewAddress);
+
+							int32 MaxMessages = GetMessageLimitForPath(*NewAddress);
+														
+							if (CurrentCount > 0)
+							{
+								UE_CLOG(LogIncomingPackets, LogBackChannel, Log, TEXT("%s has %d pending messages"), *NewAddress, CurrentCount+1);
+
+								if (MaxMessages > 0 && CurrentCount >= MaxMessages)
+								{
+									UE_CLOG(LogIncomingPackets, LogBackChannel, Log, TEXT("Discarding old messages due to limit of %d"), *NewAddress, MaxMessages);
+									RemoveMessagesWithPath(*NewAddress, 1);
+								}
+							}
+						}
+						else
+						{
+							UE_CLOG(LogIncomingPackets, LogBackChannel, Log, TEXT("Received #bundle of %d bytes"), ExpectedDataSize);
+						}
+
 						ReceivedPackets.Add(Packet);
 					}
 
@@ -194,6 +232,99 @@ bool FBackChannelOSCConnection::SendPacketData(const void* Data, const int32 Dat
 	}
 
 	return Sent > 0;
+}
+
+void FBackChannelOSCConnection::SetMessageOptions(const TCHAR* Path, int32 MaxQueuedMessages)
+{
+	FScopeLock Lock(&ReceiveMutex);
+	MessageLimits.FindOrAdd(Path) = MaxQueuedMessages;
+}
+
+int32 FBackChannelOSCConnection::GetMessageCountForPath(const TCHAR* Path)
+{
+	FScopeLock Lock(&ReceiveMutex);
+	
+	int32 Count = 0;
+
+	for (auto& Packet : ReceivedPackets)
+	{
+		if (Packet->GetType() == OSCPacketType::Message)
+		{
+			auto Msg = StaticCastSharedPtr<FBackChannelOSCMessage>(Packet);
+
+			if (Msg->GetAddress() == Path)
+			{
+				Count++;
+			}
+		}
+	}
+
+	return Count;
+}
+
+
+int32 FBackChannelOSCConnection::GetMessageLimitForPath(const TCHAR* InPath)
+{
+	FScopeLock Lock(&ReceiveMutex);
+
+	FString Path = InPath;
+
+	if (Path.EndsWith(TEXT("*")))
+	{
+		Path.LeftChop(1);
+	}
+
+	// todo - search for vest match, not first match
+	for (auto KV : MessageLimits)
+	{
+		const FString& Key = KV.Key;
+		if (Path.StartsWith(Key))
+		{
+			return KV.Value;
+		}
+	}
+
+	return -1;
+}
+
+void FBackChannelOSCConnection::RemoveMessagesWithPath(const TCHAR* Path, const int32 Num /*= 0*/)
+{
+	FScopeLock Lock(&ReceiveMutex);
+
+	auto It = ReceivedPackets.CreateIterator();
+
+	int32 RemovedCount = 0;
+
+	while (It)
+	{
+		auto Packet = *It;
+		bool bRemove = false;
+
+		if (Packet->GetType() == OSCPacketType::Message)
+		{
+			TSharedPtr<FBackChannelOSCMessage> Msg = StaticCastSharedPtr<FBackChannelOSCMessage>(Packet);
+
+			if (Msg->GetAddress() == Path)
+			{
+				bRemove = true;
+			}
+		}
+
+		if (bRemove)
+		{
+			It.RemoveCurrent();
+			RemovedCount++;
+
+			if (Num > 0 && RemovedCount == Num)
+			{
+				break;
+			}
+		}
+		else
+		{
+			It++;
+		}
+	}
 }
 
 
