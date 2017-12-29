@@ -1,6 +1,6 @@
 // Copyright 2017 Andrew Grant
-// Unless explicitly stated otherwise all files in this repository 
-// are licensed under BSD License 2.0. All Rights Reserved.
+// Licensed under BSD License 2.0. 
+// See https://github.com/andrewgrant/BackChannel for more info
 
 #pragma once
 
@@ -20,16 +20,22 @@ public:
 	FBackChannelConnection();
 	~FBackChannelConnection();
 
+	/* Connect to the specified end-point */
 	bool Connect(const TCHAR* InEndPoint) override;
 
+	/* Attach this connection to the provided socket */
 	bool Attach(FSocket* InSocket);
 
+	/* Close the connection */
 	virtual void Close() override;
 
+	/* Return our current connection state */
 	virtual bool IsConnected() const;
 
+	/* Send data over our connection. The number of bytes sent is returned */
 	virtual int32 SendData(const void* InData, const int32 InSize) override;
 
+	/* Read data from our remote connection. The number of bytes received is returned */
 	virtual int32 ReceiveData(void* OutBuffer, const int32 BufferSize) override;
 
 private:

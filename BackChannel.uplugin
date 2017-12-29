@@ -7,7 +7,7 @@
 	"Description" : "Utilities",
 	"Category" : "BackChannel",
 	"CreatedBy" : "Andrew Grant",
-	"CreatedByURL" : "https://github.com/andrewgrant",
+	"CreatedByURL" : "https://github.com/andrewgrant/BackChannel",
 	"EnabledByDefault": false,
  
 	"Modules" :

@@ -1,6 +1,6 @@
 // Copyright 2017 Andrew Grant
-// Unless explicitly stated otherwise all files in this repository 
-// are licensed under BSD License 2.0. All Rights Reserved.
+// Licensed under BSD License 2.0. 
+// See https://github.com/andrewgrant/BackChannel for more info
 
 #include "BackChannel/Private/BackChannelCommon.h"
 #include "BackChannel/Protocol/OSC/BackChannelOSCDispatch.h"

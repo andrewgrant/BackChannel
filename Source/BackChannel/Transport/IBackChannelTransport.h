@@ -1,6 +1,6 @@
 // Copyright 2017 Andrew Grant
-// Unless explicitly stated otherwise all files in this repository 
-// are licensed under BSD License 2.0. All Rights Reserved.
+// Licensed under BSD License 2.0. 
+// See https://github.com/andrewgrant/BackChannel for more info
 
 #pragma once
 
@@ -8,6 +8,9 @@
 #include "IBackChannelListener.h"
 #include "IBackChannelConnection.h"
 
+/*
+ *	Main module and factory interface for Backchannel connections
+ */
 class BACKCHANNEL_API IBackChannelTransport : public IModuleInterface
 {
 public:
