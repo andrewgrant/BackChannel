@@ -163,7 +163,7 @@ uint32 FBackChannelOSCConnection::Run()
 		}
 
 		// switch to blocking?
-		FPlatformProcess::SleepNoStats(0.05);
+		FPlatformProcess::SleepNoStats(0.001);
 	}
 
 	UE_LOG(LogBackChannel, Verbose, TEXT("OSC Connection is exiting."));

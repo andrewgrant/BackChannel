@@ -32,7 +32,7 @@ bool FBackChannelConnection::Connect(const TCHAR* InEndPoint)
 	FIPv4Endpoint EndPoint;
 	FIPv4Endpoint::Parse(InEndPoint, EndPoint);
 
-	NewSocket->SetNonBlocking(false);
+	//NewSocket->SetNonBlocking(false);
 
 	if (!NewSocket->Connect(*EndPoint.ToInternetAddr()))
 	{
@@ -41,9 +41,20 @@ bool FBackChannelConnection::Connect(const TCHAR* InEndPoint)
 		return false;
 	}
 
-	NewSocket->SetNonBlocking(true);
+	bool bFoundConnecton(false);
+	FTimespan WaitTime = FTimespan(0, 0, 5);
 
-	return Attach(NewSocket);
+	if (NewSocket->WaitForPendingConnection(bFoundConnecton, WaitTime))
+	{
+		if (bFoundConnecton)
+		{
+			return Attach(NewSocket);
+		}
+	}
+
+	//NewSocket->SetNonBlocking(true);
+
+	return false;
 }
 
 bool FBackChannelConnection::Attach(FSocket* InSocket)
