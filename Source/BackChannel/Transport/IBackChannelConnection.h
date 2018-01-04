@@ -18,7 +18,7 @@ public:
 	// from the factory
 
 	/* Connect to the specified endpoint */
-	virtual bool Connect(const TCHAR* InEndPoint) = 0;
+	virtual void Connect(const TCHAR* InEndPoint, double InTimeout, TFunction<void()>) = 0;
 
 	/* Close our connection */
 	virtual void Close() = 0;
@@ -31,6 +31,12 @@ public:
 	
 	/* Receive data from our connection. The returned value is the number of bytes read, to a max of BufferSize */
 	virtual int32 ReceiveData(void* OutBuffer, const int32 BufferSize) = 0;
+
+	/* Return the underlying socket (if any) for this connection */
+	virtual FString GetDescription() const = 0;
+
+	/* Return the underlying socket (if any) for this connection */
+	virtual FSocket* GetSocket() = 0;
 
 protected:
 

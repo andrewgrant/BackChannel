@@ -7,13 +7,6 @@
 #include "BackChannel/Protocol/OSC/BackChannelOSCConnection.h"
 #include "BackChannel/Protocol/OSC/BackChannelOSC.h"
 
-
-int32 LogIncomingPackets = 1;
-static FAutoConsoleVariableRef CVarLogIncomingPackets(
-	TEXT("backchannel.LogIncomingPackets"), LogIncomingPackets,
-	TEXT("Logs incoming packets"),
-	ECVF_Default);
-
 FBackChannelOSCConnection::FBackChannelOSCConnection(TSharedRef<IBackChannelConnection> InConnection)
 	: Connection(InConnection)
 {
@@ -23,7 +16,7 @@ FBackChannelOSCConnection::FBackChannelOSCConnection(TSharedRef<IBackChannelConn
 
 FBackChannelOSCConnection::~FBackChannelOSCConnection()
 {
-	UE_LOG(LogBackChannel, Verbose, TEXT("Destroying OSC Connection"));
+	UE_LOG(LogBackChannel, Verbose, TEXT("Destroying OSC Connection to %s"), *GetDescription());
 	if (IsRunning)
 	{
 		Stop();
@@ -43,7 +36,7 @@ bool FBackChannelOSCConnection::Start()
 		IsRunning = true;
 	}
 
-	UE_LOG(LogBackChannel, Verbose, TEXT("Started OSC Connection"));
+	UE_LOG(LogBackChannel, Verbose, TEXT("Started OSC Connection to %s"), *GetDescription());
 
 	return Thread != nullptr;
 }
@@ -64,21 +57,25 @@ uint32 FBackChannelOSCConnection::Run()
 	int32 ExpectedDataSize = 4;
 	int32 ReceivedDataSize = 0;
 
-	const int kPingTime = 5;
-	const int kTimeout = 10;
+	const float kPingTime = 5;
+	const float kTimeout = 10;
 
-	LastActivityTime = FPlatformTime::Seconds();
-	LastPingTime = FPlatformTime::Seconds();
+	LastActivityTime = LastPingTime = FPlatformTime::Seconds();
 
-	UE_LOG(LogBackChannel, Verbose, TEXT("OSC Connection is Running."));
+	UE_LOG(LogBackChannel, Verbose, TEXT("OSC Connection to %s is Running"), *Connection->GetDescription());
 
 	while (ExitRequested == false)
 	{		
+		// todo - switch to blocking?
+		FPlatformProcess::SleepNoStats(0);
+
 		int32 Received = Connection->ReceiveData(Buffer.GetData() + ReceivedDataSize, ExpectedDataSize-ReceivedDataSize);
+
+		const double TimeNow = FPlatformTime::Seconds();
 
 		if (Received > 0)
 		{
-			LastActivityTime = FPlatformTime::Seconds();
+			LastActivityTime = TimeNow;
 
 			ReceivedDataSize += Received;
 
@@ -113,7 +110,7 @@ uint32 FBackChannelOSCConnection::Run()
 
 							const FString& NewAddress = MsgPacket->GetAddress();
 
-							UE_CLOG(LogIncomingPackets, LogBackChannel, Log, TEXT("Received msg to %s of %d bytes"), *NewAddress, ExpectedDataSize);
+							UE_CLOG(GBackChannelLogPackets, LogBackChannel, Log, TEXT("Received msg to %s of %d bytes"), *NewAddress, ExpectedDataSize);
 
 							int32 CurrentCount = GetMessageCountForPath(*NewAddress);
 
@@ -121,18 +118,18 @@ uint32 FBackChannelOSCConnection::Run()
 														
 							if (CurrentCount > 0)
 							{
-								UE_CLOG(LogIncomingPackets, LogBackChannel, Log, TEXT("%s has %d pending messages"), *NewAddress, CurrentCount+1);
+								UE_CLOG(GBackChannelLogPackets, LogBackChannel, Log, TEXT("%s has %d pending messages"), *NewAddress, CurrentCount+1);
 
 								if (MaxMessages > 0 && CurrentCount >= MaxMessages)
 								{
-									UE_CLOG(LogIncomingPackets, LogBackChannel, Log, TEXT("Discarding old messages due to limit of %d"), *NewAddress, MaxMessages);
+									UE_CLOG(GBackChannelLogPackets, LogBackChannel, Log, TEXT("Discarding old messages due to limit of %d"), MaxMessages);
 									RemoveMessagesWithPath(*NewAddress, 1);
 								}
 							}
 						}
 						else
 						{
-							UE_CLOG(LogIncomingPackets, LogBackChannel, Log, TEXT("Received #bundle of %d bytes"), ExpectedDataSize);
+							UE_CLOG(GBackChannelLogPackets, LogBackChannel, Log, TEXT("Received #bundle of %d bytes"), ExpectedDataSize);
 						}
 
 						ReceivedPackets.Add(Packet);
@@ -146,27 +143,23 @@ uint32 FBackChannelOSCConnection::Run()
 		}
 		else
 		{
-			const float TimeNow = FPlatformTime::Seconds();
-			if (TimeNow - LastPingTime >= kPingTime)
+			if ((TimeNow - LastPingTime) >= kPingTime)
 			{
 				FBackChannelOSCMessage Msg(TEXT("/ping"));
 				SendPacket(Msg);
 				LastPingTime = TimeNow;
 			}
 
-			const float TimeSinceActivity = TimeNow - LastActivityTime;
+			const double TimeSinceActivity = (TimeNow - LastActivityTime);
 			if (TimeSinceActivity >= kTimeout)
 			{
-				UE_LOG(LogBackChannel, Error, TEXT("Connection timed out after %.02 seconds"), TimeSinceActivity);
+				UE_LOG(LogBackChannel, Error, TEXT("Connection to %s timed out after %.02f seconds"), *Connection->GetDescription());
 				ExitRequested = true;
 			}
 		}
-
-		// switch to blocking?
-		FPlatformProcess::SleepNoStats(0.001);
 	}
 
-	UE_LOG(LogBackChannel, Verbose, TEXT("OSC Connection is exiting."));
+	UE_LOG(LogBackChannel, Verbose, TEXT("OSC Connection to %s is exiting."), *Connection->GetDescription());
 	IsRunning = false;
 	return 0;
 }
@@ -218,20 +211,14 @@ bool FBackChannelOSCConnection::SendPacketData(const void* Data, const int32 Dat
 		// OSC over TCP requires a size followed by the packet (TODO - combine these?)
 		Connection->SendData(&DataLen, sizeof(DataLen));
 		Sent = Connection->SendData(Data, DataLen);
-
-		if (Sent > 0)
-		{
-			LastActivityTime = FPlatformTime::Seconds();
-			UE_LOG(LogBackChannel, Verbose, TEXT("Sent %d bytes of data"), DataLen);
-			
-		}
-		else
-		{
-			UE_LOG(LogBackChannel, Error, TEXT("Failed to send %d bytes of data"), DataLen);
-		}
 	}
 
 	return Sent > 0;
+}
+
+FString FBackChannelOSCConnection::GetDescription()
+{
+	return FString::Printf(TEXT("OSCConnection to %s"), *Connection->GetDescription());
 }
 
 void FBackChannelOSCConnection::SetMessageOptions(const TCHAR* Path, int32 MaxQueuedMessages)
@@ -239,6 +226,8 @@ void FBackChannelOSCConnection::SetMessageOptions(const TCHAR* Path, int32 MaxQu
 	FScopeLock Lock(&ReceiveMutex);
 	MessageLimits.FindOrAdd(Path) = MaxQueuedMessages;
 }
+
+
 
 int32 FBackChannelOSCConnection::GetMessageCountForPath(const TCHAR* Path)
 {

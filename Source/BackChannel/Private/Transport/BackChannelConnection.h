@@ -21,10 +21,10 @@ public:
 	~FBackChannelConnection();
 
 	/* Connect to the specified end-point */
-	bool Connect(const TCHAR* InEndPoint) override;
+	virtual void Connect(const TCHAR* InEndPoint, double InTimeout, TFunction<void()> InDelegate) override;
 
 	/* Attach this connection to the provided socket */
-	bool Attach(FSocket* InSocket);
+	bool Attach(FSocket* InSocket, const FString& InDescription);
 
 	/* Close the connection */
 	virtual void Close() override;
@@ -38,7 +38,16 @@ public:
 	/* Read data from our remote connection. The number of bytes received is returned */
 	virtual int32 ReceiveData(void* OutBuffer, const int32 BufferSize) override;
 
+	/* Return a string describing this connection */
+	virtual FString	GetDescription() const override { return Description; }
+
+	/* Return the underlying socket (if any) for this connection */
+	virtual FSocket* GetSocket() override { return Socket; }
+
 private:
 
+	FThreadSafeBool			IsAttemptingConnection;
+	FCriticalSection		SocketMutex;
 	FSocket*				Socket;
+	FString					Description;
 };

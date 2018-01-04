@@ -33,19 +33,28 @@ public:
 	
 	bool ConnectListenerAndConnection()
 	{
-		bool IsConnected = false;
+		FThreadSafeBool WaitingForConnect;
+		FThreadSafeBool IsConnected;
 
 		BackChannelListener->GetOnConnectionRequestDelegate().BindLambda([this, &IsConnected](auto NewConnection)->bool
 		{
 			BackChannelConnection2 = NewConnection;
-			FPlatformMisc::MemoryBarrier();
 			IsConnected = true;
 			return true;
 		});
 
 		BackChannelListener->Listen(1313);
 
-		BackChannelConnection1->Connect(TEXT("127.0.0.1:1313"));
+		WaitingForConnect = true;
+
+		BackChannelConnection1->Connect(TEXT("127.0.0.1:1313"), 5, [&WaitingForConnect]() {
+			WaitingForConnect = false;
+		});
+
+		while (WaitingForConnect)
+		{
+			FPlatformProcess::SleepNoStats(0);
+		}
 
 		const double StartTime = FPlatformTime::Seconds();
 

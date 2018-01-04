@@ -52,7 +52,7 @@ bool FBackChannelListener::Listen(const uint16 Port)
 			{
 				TSharedRef<FBackChannelConnection> NewConnection = MakeShareable(new FBackChannelConnection());
 
-				NewConnection->Attach(InSocket);
+				NewConnection->Attach(InSocket, EndPoint.ToString());
 				SocketAccepted = ConnectionRequestDelegate.Execute(NewConnection);
 			}
 

@@ -48,12 +48,8 @@ public:
 	/* Set options for the specified message path */
 	void SetMessageOptions(const TCHAR* Path, int32 MaxQueuedMessages);
 
-	
+	FString GetDescription();
 
-	FString Description()
-	{
-		return TEXT("BackChannelConnection");
-	}
 
 protected:
 	// Begin protected FRunnable overrides
