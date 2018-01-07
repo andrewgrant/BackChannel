@@ -6,7 +6,7 @@
 #include "BackChannel/Private/BackChannelCommon.h"
 #include "BackChannel/Transport/IBackChannelTransport.h"
 
-#if WITH_DEV_AUTOMATION_TESTS
+#if WITH_DEV_AUTOMATION_TESTS && 0
 
 class FBackChannelTestTransport : public FAutomationTestBase
 {
@@ -48,8 +48,11 @@ public:
 
 		WaitingForConnect = true;
 
-		BackChannelConnection1->Connect(TEXT("127.0.0.1:1313"), 5, [&WaitingForConnect]() {
+		BackChannelConnection1->Connect(TEXT("127.0.0.1:1313"));
+		
+		BackChannelConnection1->WaitForConnection(5, [&WaitingForConnect](auto) {
 			WaitingForConnect = false;
+			return true;
 		});
 
 		while (WaitingForConnect)

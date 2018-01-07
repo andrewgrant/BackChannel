@@ -6,21 +6,42 @@
 #pragma once
 
 #include "BackChannel/Transport/IBackChannelConnection.h"
+#include "HAL/Runnable.h"
 #include "EngineMinimal.h"
 
 class FSocket;
+
+class IBackChannelThreadedConnectionDelegate
+{
+public:
+
+	virtual bool OnIncomingConnection(TSharedRef<IBackChannelConnection>& NewConnection) { return false; }
+
+	virtual void OnRecvData(TSharedPtr<IBackChannelConnection>& NewConnection) { return; }
+
+};
 
 /**
 * BackChannelClient implementation.
 *
 */
-class BACKCHANNEL_API FBackChannelConnection : public IBackChannelConnection, public TSharedFromThis<FBackChannelConnection>
+class BACKCHANNEL_API FBackChannelThreadedConnection : public IBackChannelConnection, public FRunnable, public TSharedFromThis<FBackChannelThreadedConnection>
 {
 public:
 
-	FBackChannelConnection();
-	~FBackChannelConnection();
-	
+	FBackChannelThreadedConnection();
+	~FBackChannelThreadedConnection();
+
+	void Start(TSharedRef<IBackChannelConnection> InConnection,
+		TSharedRef<IBackChannelThreadedConnectionDelegate> InDelegate,
+		EThreadPriority Priority = TPri_Normal);
+
+	virtual uint32 Run() override;
+
+	virtual void Stop() override;
+
+	bool IsRunning() const;
+
 	/* Return our current connection state */
 	virtual bool IsConnected() const override;
 
@@ -31,7 +52,7 @@ public:
 	virtual FString	GetDescription() const override;
 
 	/* Return the underlying socket (if any) for this connection */
-	virtual FSocket* GetSocket() override { return Socket; }
+	virtual FSocket* GetSocket() override;
 
 	/* Connect to the specified end-point */
 	virtual bool Connect(const TCHAR* InEndPoint) override;
@@ -55,10 +76,16 @@ public:
 
 private:
 
-	void					CloseWithError(const TCHAR* Error);
+	IBackChannelConnection*						RawConnection;
+	IBackChannelThreadedConnectionDelegate*		RawDelegate;
 
-	FThreadSafeBool			IsAttemptingConnection;
-	FCriticalSection		SocketMutex;
-	FSocket*				Socket;
-	bool					IsListener;
+	TSharedPtr<IBackChannelConnection>					Connection;
+	TWeakPtr<IBackChannelThreadedConnectionDelegate>	Delegate;
+	
+	FThreadSafeBool		bExitRequested;
+	FThreadSafeBool		bIsRunning;
+
+	FCriticalSection	RunningCS;
+	FCriticalSection	SocketMutex;
+
 };

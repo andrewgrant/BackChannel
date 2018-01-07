@@ -6,7 +6,6 @@
 #pragma once
 
 #include "EngineMinimal.h"
-#include "IBackChannelListener.h"
 #include "IBackChannelConnection.h"
 
 /*
@@ -25,8 +24,6 @@ public:
 	{
 		return FModuleManager::LoadModulePtr<IBackChannelTransport>("BackChannel");
 	}
-
-	virtual TSharedPtr<IBackChannelListener> CreateListener(const int32 Type) = 0;
 
 	virtual TSharedPtr<IBackChannelConnection> CreateConnection(const int32 Type) = 0;
 

@@ -19,12 +19,19 @@ public:
 	// from the factory
 
 	/* Connect to the specified endpoint */
-	virtual void Connect(const TCHAR* InEndPoint, double InTimeout, TFunction<void()>) = 0;
+	virtual bool Connect(const TCHAR* InEndPoint) = 0;
+
+	virtual bool Listen(const int16 Port) = 0;
+
+	virtual bool WaitForConnection(double InTimeout, TFunction<bool(TSharedRef<IBackChannelConnection>)> InDelegate) = 0;
 
 	/* Close our connection */
 	virtual void Close() = 0;
 
-	/* Check if this object is connected */
+	/* Returns true if this connection is currently listening for incoming connections */
+	virtual bool IsListening() const = 0;
+
+	/* Returns true if this connection is connected to another */
 	virtual bool IsConnected() const = 0;
 
 	/* Send data via our connection */

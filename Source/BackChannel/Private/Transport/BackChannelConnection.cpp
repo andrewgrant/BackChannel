@@ -23,6 +23,7 @@ static FAutoConsoleVariableRef BCCVarLogErrors(
 FBackChannelConnection::FBackChannelConnection()
 {
 	Socket = nullptr;
+	IsListener = false;
 }
 
 FBackChannelConnection::~FBackChannelConnection()
@@ -33,13 +34,50 @@ FBackChannelConnection::~FBackChannelConnection()
 	}
 }
 
-void FBackChannelConnection::Connect(const TCHAR* InEndPoint, double InTimeout, TFunction<void()> InDelegate)
+bool FBackChannelConnection::IsConnected() const
 {
-	while (IsAttemptingConnection)
-	{
-		FPlatformProcess::SleepNoStats(0);
-	}
+	FBackChannelConnection* NonConstThis = const_cast<FBackChannelConnection*>(this);
+	FScopeLock Lock(&NonConstThis->SocketMutex);
+	return Socket != nullptr && Socket->GetConnectionState() == ESocketConnectionState::SCS_Connected;
+}
 
+bool FBackChannelConnection::IsListening() const
+{
+	return IsListener;
+}
+
+FString	FBackChannelConnection::GetDescription() const
+{
+	FBackChannelConnection* NonConstThis = const_cast<FBackChannelConnection*>(this);
+	FScopeLock Lock(&NonConstThis->SocketMutex);
+
+	return Socket ? Socket->GetDescription() : TEXT("No Socket");
+}
+
+void FBackChannelConnection::Close()
+{
+	FScopeLock Lock(&SocketMutex);
+	if (Socket)
+	{
+		UE_LOG(LogBackChannel, Log, TEXT("Closing connection %s"), *Socket->GetDescription());
+		Socket->Close();
+		ISocketSubsystem::Get(PLATFORM_SOCKETSUBSYSTEM)->DestroySocket(Socket);
+		Socket = nullptr;
+	}
+}
+
+void FBackChannelConnection::CloseWithError(const TCHAR* Error)
+{
+	const TCHAR* SocketErr = ISocketSubsystem::Get(PLATFORM_SOCKETSUBSYSTEM)->GetSocketError(SE_GET_LAST_ERROR_CODE);
+	FString SockDesc = Socket != nullptr ? Socket->GetDescription() : TEXT("(No Socket)");
+
+	UE_LOG(LogBackChannel, Error, TEXT("%s, Err: %s, Socket:%s"), Error, SocketErr, *SockDesc);
+
+	Close();
+}
+
+bool FBackChannelConnection::Connect(const TCHAR* InEndPoint)
+{
 	if (IsConnected())
 	{
 		Close();
@@ -49,77 +87,116 @@ void FBackChannelConnection::Connect(const TCHAR* InEndPoint, double InTimeout, 
 
 	FString LocalEndPoint = InEndPoint;
 
-	AsyncTask(ENamedThreads::AnyBackgroundThreadNormalTask, [this, LocalEndPoint, InTimeout, InDelegate]()
+	FString Description = FString::Printf(TEXT("%s"), InEndPoint);
+
+	FSocket* NewSocket = FTcpSocketBuilder(*Description)
+		.AsReusable();
+
+	if (NewSocket)
 	{
-		bool bSuccess = false;
+		FIPv4Endpoint EndPoint;
+		FIPv4Endpoint::Parse(LocalEndPoint, EndPoint);
 
-		FSocket* NewSocket = FTcpSocketBuilder(TEXT("BackChannel Client"));
-
-		if (NewSocket)
+		if (NewSocket->Connect(*EndPoint.ToInternetAddr()))
 		{
-			FIPv4Endpoint EndPoint;
-			FIPv4Endpoint::Parse(LocalEndPoint, EndPoint);
+			UE_LOG(LogBackChannel, Log, TEXT("Opening connection to %s (localport: %d)"), *NewSocket->GetDescription(), NewSocket->GetPortNo());
+			Attach(NewSocket);
+		}
+		else
+		{
+			ISocketSubsystem::Get(PLATFORM_SOCKETSUBSYSTEM)->DestroySocket(NewSocket);
+			CloseWithError(*FString::Printf(TEXT("Failed to open connection to %s."), InEndPoint));
+		}
+	}
 
-			if (NewSocket->Connect(*EndPoint.ToInternetAddr()))
+	return Socket != nullptr;
+}
+
+bool FBackChannelConnection::Listen(const int16 Port)
+{
+	FIPv4Endpoint Endpoint(FIPv4Address::Any, Port);
+
+	FSocket* NewSocket = FTcpSocketBuilder(TEXT("FBackChannelConnection ListenSocket"))
+		.AsReusable()
+		.BoundToEndpoint(Endpoint)
+		.Listening(8)
+		.WithSendBufferSize(2 * 1024 * 1024);
+
+	if (NewSocket == nullptr)
+	{
+		CloseWithError(*FString::Printf(TEXT("Failed to start listening on port %d"), Port));
+	}
+	else
+	{
+		Attach(NewSocket);
+		IsListener = true;
+	}
+
+	return NewSocket != nullptr;
+}
+
+bool FBackChannelConnection::WaitForConnection(double InTimeout, TFunction<bool(TSharedRef<IBackChannelConnection>)> InDelegate)
+{
+	FTimespan SleepTime = FTimespan(0, 0, InTimeout);
+
+	// handle incoming connections
+
+	bool Pending = false;
+
+	bool Success = Socket->WaitForPendingConnection(Pending, SleepTime);
+
+	if (Success)
+	{
+		if (Pending)
+		{
+			UE_LOG(LogBackChannel, Log, TEXT("Found connection on %s"), *Socket->GetDescription());
+
+			if (IsListener == false)
 			{
-				bool bFoundConnecton(false);
-				FTimespan WaitTime = FTimespan(0, 0, (int)InTimeout);
-
-				NewSocket->WaitForPendingConnection(bFoundConnecton, WaitTime);
-
-				if (bFoundConnecton)
-				{
-					bSuccess = true;
-				}
-			}
-
-			if (bSuccess)
-			{
-				FString NewDescription = FString::Printf(TEXT("%s (localport:%d)"), *LocalEndPoint, NewSocket->GetPortNo());
-				Attach(NewSocket, NewDescription);
+				InDelegate(AsShared());
 			}
 			else
 			{
-				ISocketSubsystem::Get(PLATFORM_SOCKETSUBSYSTEM)->DestroySocket(NewSocket);
+				TSharedRef<FInternetAddr> RemoteAddress = ISocketSubsystem::Get(PLATFORM_SOCKETSUBSYSTEM)->CreateInternetAddr();
+
+				FSocket* ConnectionSocket = Socket->Accept(*RemoteAddress, TEXT("Incoming Connection"));
+
+				if (ConnectionSocket != nullptr)
+				{
+					TSharedRef<FBackChannelConnection> BCConnection = MakeShareable(new FBackChannelConnection);
+					BCConnection->Attach(ConnectionSocket);
+
+					if (InDelegate(BCConnection) == false)
+					{
+						UE_LOG(LogBackChannel, Warning, TEXT("Calling code rejected connection on %s"), *Socket->GetDescription());
+						BCConnection->Close();
+						Pending = false;
+					}
+					else
+					{
+						UE_LOG(LogBackChannel, Warning, TEXT("Accepted connection on %s"), *Socket->GetDescription());
+					}
+				}
 			}
 		}
+	}
+	else
+	{
+		CloseWithError(TEXT("Connection Failed"));
+	}
 
-		IsAttemptingConnection = false;
-
-		AsyncTask(ENamedThreads::GameThread, [InDelegate]() {
-			InDelegate();
-		});
-	
-
-	});
-
-	return;
+	return Success;
 }
 
-bool FBackChannelConnection::Attach(FSocket* InSocket, const FString& InDescription)
+bool FBackChannelConnection::Attach(FSocket* InSocket)
 {
 	FScopeLock Lock(&SocketMutex);
 	Socket = InSocket;
-	Description = InDescription;
 	return true;
 }
 
-void FBackChannelConnection::Close()
-{
-	FScopeLock Lock(&SocketMutex);
-	if (Socket)
-	{
-		Socket->Close();
-		Socket = nullptr;
-	}
-}
 
-bool FBackChannelConnection::IsConnected() const
-{
-	FBackChannelConnection* NonConstThis = const_cast<FBackChannelConnection*>(this);
-	FScopeLock Lock(&NonConstThis->SocketMutex);
-	return Socket != nullptr && Socket->GetConnectionState() == ESocketConnectionState::SCS_Connected;
-}
+
 
 int32 FBackChannelConnection::SendData(const void* InData, const int32 InSize)
 {
@@ -138,7 +215,7 @@ int32 FBackChannelConnection::SendData(const void* InData, const int32 InSize)
 		{
 			const TCHAR* SocketErr = ISocketSubsystem::Get(PLATFORM_SOCKETSUBSYSTEM)->GetSocketError(SE_GET_LAST_ERROR_CODE);
 			
-			UE_CLOG(GBackChannelLogErrors, LogBackChannel, Error, TEXT("Failed to send %d bytes of data to %s. Err: %s"), BytesSent, *Description, SocketErr);
+			UE_CLOG(GBackChannelLogErrors, LogBackChannel, Error, TEXT("Failed to send %d bytes of data to %s. Err: %s"), BytesSent, *GetDescription(), SocketErr);
 		}
 	}
 	else
