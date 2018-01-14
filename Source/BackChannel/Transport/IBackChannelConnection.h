@@ -5,7 +5,7 @@
 
 #pragma once
 
-// todo (agrant 17/12/29): concept of 'connection' should be a base class with persistent connection subclass?
+// todo (agrant 2017/12/29): concept of 'connection' should be a base class with persistent connection subclass?
 
 /*
  *	Base class that describes a back-channel connection. The underlying behavior will depend on the type
@@ -15,18 +15,20 @@ class IBackChannelConnection
 {
 public:
 	
-	// todo (agrant 17/12/29): Should remove 'Connect' and instead return a connected (or null..) socket
+	// todo (agrant 2017/12/29): Should remove 'Connect' and instead return a connected (or null..) socket
 	// from the factory
 
-	/* Connect to the specified endpoint */
+	/* Start connecting to the specified port for incoming connections. Use WaitForConnection to check status. */
 	virtual bool Connect(const TCHAR* InEndPoint) = 0;
 
+	/* Start listening on the specified port for incoming connections. Use WaitForConnection to accept one. */
 	virtual bool Listen(const int16 Port) = 0;
 
-	virtual bool WaitForConnection(double InTimeout, TFunction<bool(TSharedRef<IBackChannelConnection>)> InDelegate) = 0;
-
-	/* Close our connection */
+	/* Close the connection */
 	virtual void Close() = 0;
+
+	/* Waits for an icoming or outgoing connection to be made */
+	virtual bool WaitForConnection(double InTimeout, TFunction<bool(TSharedRef<IBackChannelConnection>)> InDelegate) = 0;
 
 	/* Returns true if this connection is currently listening for incoming connections */
 	virtual bool IsListening() const = 0;

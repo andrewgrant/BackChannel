@@ -8,7 +8,7 @@
 #include "BackChannel/Private/Transport/BackChannelConnection.h"
 #include "Common/TcpSocketBuilder.h"
 
-int32 GBackChannelLogPackets = 0;
+int32 GBackChannelLogPackets = 1;
 static FAutoConsoleVariableRef BCCVarLogPackets(
 	TEXT("backchannel.logpackets"), GBackChannelLogPackets,
 	TEXT("Logs incoming packets"),
@@ -78,6 +78,8 @@ void FBackChannelConnection::CloseWithError(const TCHAR* Error)
 
 bool FBackChannelConnection::Connect(const TCHAR* InEndPoint)
 {
+	FScopeLock Lock(&SocketMutex);
+
 	if (IsConnected())
 	{
 		Close();
@@ -114,6 +116,8 @@ bool FBackChannelConnection::Connect(const TCHAR* InEndPoint)
 
 bool FBackChannelConnection::Listen(const int16 Port)
 {
+	FScopeLock Lock(&SocketMutex);
+
 	FIPv4Endpoint Endpoint(FIPv4Address::Any, Port);
 
 	FSocket* NewSocket = FTcpSocketBuilder(TEXT("FBackChannelConnection ListenSocket"))
@@ -137,6 +141,8 @@ bool FBackChannelConnection::Listen(const int16 Port)
 
 bool FBackChannelConnection::WaitForConnection(double InTimeout, TFunction<bool(TSharedRef<IBackChannelConnection>)> InDelegate)
 {
+	FScopeLock Lock(&SocketMutex);
+
 	FTimespan SleepTime = FTimespan(0, 0, InTimeout);
 
 	// handle incoming connections
@@ -191,11 +197,12 @@ bool FBackChannelConnection::WaitForConnection(double InTimeout, TFunction<bool(
 bool FBackChannelConnection::Attach(FSocket* InSocket)
 {
 	FScopeLock Lock(&SocketMutex);
+
+	check(Socket == nullptr);
+
 	Socket = InSocket;
 	return true;
 }
-
-
 
 
 int32 FBackChannelConnection::SendData(const void* InData, const int32 InSize)
@@ -236,6 +243,7 @@ int32 FBackChannelConnection::ReceiveData(void* OutBuffer, const int32 BufferSiz
 	int32 BytesRead(0);
 	Socket->Recv((uint8*)OutBuffer, BufferSize, BytesRead, ESocketReceiveFlags::None);
 
+	// todo - close connection on certain errors
 	if (BytesRead > 0)
 	{
 		UE_CLOG(GBackChannelLogPackets, LogBackChannel, Log, TEXT("Received %d bytes of data"), BytesRead);

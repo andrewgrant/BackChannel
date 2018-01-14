@@ -7,12 +7,21 @@
 #include "BackChannel/Transport/IBackChannelTransport.h"
 #include "BackChannel/Protocol/OSC/BackChannelOSCConnection.h"
 #include "BackChannel/Protocol/OSC/BackChannelOSC.h"
+#include "Sockets.h"
 
 FBackChannelOSCConnection::FBackChannelOSCConnection(TSharedRef<IBackChannelConnection> InConnection)
 	: Connection(InConnection)
 {
-	LastActivityTime = 0;
-	LastPingTime = 0;
+	LastReceiveTime = 0;
+	LastSendTime = 0;
+	PingTime = 3;
+
+	// OSC connections expect a size followed by payload for TCP connections
+	ExpectedDataSize = 4;
+	ReceivedDataSize = 0;
+
+	const int32 kDefaultBufferSize = 4096;
+	ReceiveBuffer.AddUninitialized(kDefaultBufferSize);
 }
 
 FBackChannelOSCConnection::~FBackChannelOSCConnection()
@@ -22,6 +31,129 @@ FBackChannelOSCConnection::~FBackChannelOSCConnection()
 	{
 		Stop();
 	}
+}
+
+void FBackChannelOSCConnection::ReceivePackets(const float MaxTime /*= 0*/)
+{
+	ReceiveData(MaxTime);
+	DispatchMessages();
+
+	const float TimeSinceSend = FPlatformTime::Seconds() - LastSendTime;
+
+	if (TimeSinceSend >= PingTime)
+	{
+		FBackChannelOSCMessage Msg(TEXT("/ping"));
+		SendPacket(Msg);
+	}
+}
+
+void FBackChannelOSCConnection::ReceiveData(const float MaxTime /*= 0*/)
+{
+
+	const double StarTime = FPlatformTime::Seconds();
+
+	bool KeepReceiving = false;
+
+	do
+	{
+		FScopeLock Lock(&ReceiveMutex);
+
+		Connection->GetSocket()->Wait(ESocketWaitConditions::WaitForRead, FTimespan(0, 0, MaxTime));
+
+		int32 Received = Connection->ReceiveData(ReceiveBuffer.GetData() + ReceivedDataSize, ExpectedDataSize - ReceivedDataSize);
+
+		if (Received > 0)
+		{
+			LastReceiveTime = FPlatformTime::Seconds();
+
+			ReceivedDataSize += Received;
+
+			if (ReceivedDataSize == ExpectedDataSize)
+			{
+				// reset this
+				ReceivedDataSize = 0;
+
+				if (ExpectedDataSize == 4)
+				{
+					int32 Size(0);
+					FMemory::Memcpy(&Size, ReceiveBuffer.GetData(), sizeof(int32));
+
+					if (Size > ReceiveBuffer.Num())
+					{
+						ReceiveBuffer.AddUninitialized(Size - ReceiveBuffer.Num());
+					}
+
+					ExpectedDataSize = Size;
+				}
+				else
+				{
+					// read packet
+					TSharedPtr<FBackChannelOSCPacket> Packet = FBackChannelOSCPacket::CreateFromBuffer(ReceiveBuffer.GetData(), ExpectedDataSize);
+
+					if (Packet.IsValid())
+					{
+						FScopeLock Lock(&ReceiveMutex);
+
+						bool bAddPacket = true;
+
+						if (Packet->GetType() == OSCPacketType::Message)
+						{
+							auto MsgPacket = StaticCastSharedPtr<FBackChannelOSCMessage>(Packet);
+
+							const FString& NewAddress = MsgPacket->GetAddress();
+
+							UE_CLOG(GBackChannelLogPackets, LogBackChannel, Log, TEXT("Received msg to %s of %d bytes"), *NewAddress, ExpectedDataSize);
+
+							int32 CurrentCount = GetMessageCountForPath(*NewAddress);
+
+							int32 MaxMessages = GetMessageLimitForPath(*NewAddress);
+
+							if (CurrentCount > 0)
+							{
+								UE_CLOG(GBackChannelLogPackets, LogBackChannel, Log, TEXT("%s has %d pending messages"), *NewAddress, CurrentCount + 1);
+
+								if (MaxMessages > 0 && CurrentCount >= MaxMessages)
+								{
+									UE_CLOG(GBackChannelLogPackets, LogBackChannel, Log, TEXT("Discarding old messages due to limit of %d"), MaxMessages);
+									RemoveMessagesWithPath(*NewAddress, 1);
+								}
+							}
+						}
+						else
+						{
+							UE_CLOG(GBackChannelLogPackets, LogBackChannel, Log, TEXT("Received #bundle of %d bytes"), ExpectedDataSize);
+						}
+
+						ReceivedPackets.Add(Packet);
+					}
+
+					ExpectedDataSize = 4;
+				}
+			}
+		}
+
+		const double ElapsedTime = FPlatformTime::Seconds() - StarTime;
+
+		KeepReceiving = Received && (ElapsedTime < MaxTime || MaxTime == 0);
+
+	} while (KeepReceiving);
+}
+
+void FBackChannelOSCConnection::DispatchMessages()
+{
+	FScopeLock Lock(&ReceiveMutex);
+
+	for (auto& Packet : ReceivedPackets)
+	{
+		if (Packet->GetType() == OSCPacketType::Message)
+		{
+			TSharedPtr<FBackChannelOSCMessage> Msg = StaticCastSharedPtr<FBackChannelOSCMessage>(Packet);
+
+			DispatchMap.DispatchMessage(*Msg.Get());
+		}
+	}
+
+	ReceivedPackets.Empty();
 }
 
 bool FBackChannelOSCConnection::Start()
@@ -42,11 +174,6 @@ bool FBackChannelOSCConnection::Start()
 	return Thread != nullptr;
 }
 
-bool FBackChannelOSCConnection::Init()
-{
-	return true;
-}
-
 uint32 FBackChannelOSCConnection::Run()
 {
 	const int32 kDefaultBufferSize = 4096;
@@ -54,109 +181,22 @@ uint32 FBackChannelOSCConnection::Run()
 	TArray<uint8> Buffer;
 	Buffer.AddUninitialized(kDefaultBufferSize);
 
-	// OSC connections expect a size followed by payload for TCP connections
-	int32 ExpectedDataSize = 4;
-	int32 ReceivedDataSize = 0;
 
-	const float kPingTime = 5;
 	const float kTimeout = 10;
 
-	LastActivityTime = LastPingTime = FPlatformTime::Seconds();
+	LastReceiveTime = LastSendTime = FPlatformTime::Seconds();
 
 	UE_LOG(LogBackChannel, Verbose, TEXT("OSC Connection to %s is Running"), *Connection->GetDescription());
 
 	while (ExitRequested == false)
 	{		
-		// todo - switch to blocking?
-		FPlatformProcess::SleepNoStats(0);
+		ReceivePackets(0);
 
-		int32 Received = Connection->ReceiveData(Buffer.GetData() + ReceivedDataSize, ExpectedDataSize-ReceivedDataSize);
-
-		const double TimeNow = FPlatformTime::Seconds();
-
-		if (Received > 0)
+		const double TimeSinceActivity = (FPlatformTime::Seconds() - LastReceiveTime);
+		if (TimeSinceActivity >= kTimeout)
 		{
-			LastActivityTime = TimeNow;
-
-			ReceivedDataSize += Received;
-
-			if (ReceivedDataSize == ExpectedDataSize)
-			{
-				if (ExpectedDataSize == 4)
-				{
-					int32 Size(0);
-					FMemory::Memcpy(&Size, Buffer.GetData(), sizeof(int32));
-
-					if (Size > Buffer.Num())
-					{
-						Buffer.AddUninitialized(Size - Buffer.Num());
-					}
-
-					ExpectedDataSize = Size;
-				}
-				else
-				{
-					// read packet
-					TSharedPtr<FBackChannelOSCPacket> Packet = FBackChannelOSCPacket::CreateFromBuffer(Buffer.GetData(), ExpectedDataSize);
-
-					if (Packet.IsValid())
-					{
-						FScopeLock Lock(&ReceiveMutex);
-
-						bool bAddPacket = true;
-
-						if (Packet->GetType() == OSCPacketType::Message)
-						{
-							auto MsgPacket = StaticCastSharedPtr<FBackChannelOSCMessage>(Packet);
-
-							const FString& NewAddress = MsgPacket->GetAddress();
-
-							UE_CLOG(GBackChannelLogPackets, LogBackChannel, Log, TEXT("Received msg to %s of %d bytes"), *NewAddress, ExpectedDataSize);
-
-							int32 CurrentCount = GetMessageCountForPath(*NewAddress);
-
-							int32 MaxMessages = GetMessageLimitForPath(*NewAddress);
-														
-							if (CurrentCount > 0)
-							{
-								UE_CLOG(GBackChannelLogPackets, LogBackChannel, Log, TEXT("%s has %d pending messages"), *NewAddress, CurrentCount+1);
-
-								if (MaxMessages > 0 && CurrentCount >= MaxMessages)
-								{
-									UE_CLOG(GBackChannelLogPackets, LogBackChannel, Log, TEXT("Discarding old messages due to limit of %d"), MaxMessages);
-									RemoveMessagesWithPath(*NewAddress, 1);
-								}
-							}
-						}
-						else
-						{
-							UE_CLOG(GBackChannelLogPackets, LogBackChannel, Log, TEXT("Received #bundle of %d bytes"), ExpectedDataSize);
-						}
-
-						ReceivedPackets.Add(Packet);
-					}
-
-					ExpectedDataSize = 4;
-				}
-
-				ReceivedDataSize = 0;
-			}
-		}
-		else
-		{
-			if ((TimeNow - LastPingTime) >= kPingTime)
-			{
-				FBackChannelOSCMessage Msg(TEXT("/ping"));
-				SendPacket(Msg);
-				LastPingTime = TimeNow;
-			}
-
-			const double TimeSinceActivity = (TimeNow - LastActivityTime);
-			if (TimeSinceActivity >= kTimeout)
-			{
-				UE_LOG(LogBackChannel, Error, TEXT("Connection to %s timed out after %.02f seconds"), *Connection->GetDescription());
-				ExitRequested = true;
-			}
+			UE_LOG(LogBackChannel, Error, TEXT("Connection to %s timed out after %.02f seconds"), *Connection->GetDescription(), TimeSinceActivity);
+			ExitRequested = true;
 		}
 	}
 
@@ -190,6 +230,9 @@ bool FBackChannelOSCConnection::IsConnected() const
 
 bool FBackChannelOSCConnection::SendPacket(FBackChannelOSCPacket& Packet)
 {
+	FBackChannelOSCMessage* MsgPacket = (FBackChannelOSCMessage*)&Packet;
+
+	UE_LOG(LogBackChannel, Log, TEXT("Sending packet to %s"), *MsgPacket->GetAddress());
 	TArray<uint8> Data = Packet.WriteToBuffer();
 	return SendPacketData(Data.GetData(), Data.Num());
 }
@@ -211,7 +254,12 @@ bool FBackChannelOSCConnection::SendPacketData(const void* Data, const int32 Dat
 	{
 		// OSC over TCP requires a size followed by the packet (TODO - combine these?)
 		Connection->SendData(&DataLen, sizeof(DataLen));
+
+		ANSICHAR* RawData = (ANSICHAR*)Data;
+		check(FCStringAnsi::Strlen(RawData) < 64);
 		Sent = Connection->SendData(Data, DataLen);
+
+		LastSendTime = FPlatformTime::Seconds();
 	}
 
 	return Sent > 0;
@@ -323,19 +371,3 @@ FBackChannelOSCDispatch& FBackChannelOSCConnection::GetDispatchMap()
 	return DispatchMap;
 }
 
-void FBackChannelOSCConnection::DispatchMessages()
-{
-	FScopeLock Lock(&ReceiveMutex);
-
-	for (auto& Packet : ReceivedPackets)
-	{
-		if (Packet->GetType() == OSCPacketType::Message)
-		{
-			TSharedPtr<FBackChannelOSCMessage> Msg = StaticCastSharedPtr<FBackChannelOSCMessage>(Packet);
-
-			DispatchMap.DispatchMessage(*Msg.Get());
-		}
-	}
-
-	ReceivedPackets.Empty();
-}

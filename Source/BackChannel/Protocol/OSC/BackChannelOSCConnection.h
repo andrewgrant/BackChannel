@@ -37,8 +37,7 @@ public:
 	/* Returns our connection state as determined by the underlying BackChannel connection */
 	bool IsConnected() const;
 
-	/* Dispatch all queued messages */
-	void DispatchMessages();
+	void ReceivePackets(const float MaxTime = 0);
 
 	/* Send the provided OSC packet */
 	bool SendPacket(FBackChannelOSCPacket& Packet);
@@ -54,7 +53,6 @@ public:
 
 protected:
 	// Begin protected FRunnable overrides
-	virtual bool Init() override;
 	virtual uint32 Run() override;
 	// End protected FRunnable overrides
 
@@ -64,8 +62,12 @@ protected:
 
 	int32 GetMessageCountForPath(const TCHAR* Path);
 
-
 	void RemoveMessagesWithPath(const TCHAR* Path, const int32 Num = 0);
+
+	void ReceiveData(const float MaxTime = 0);
+
+	/* Dispatch all queued messages */
+	void DispatchMessages();
 
 
 protected:
@@ -83,6 +85,13 @@ protected:
 
 	FCriticalSection	ReceiveMutex;
 	FCriticalSection	SendMutex;
-	double				LastActivityTime;
-	double				LastPingTime;
+
+	double				LastReceiveTime;
+	double				LastSendTime;
+	double				PingTime;
+
+	int32				ReceivedDataSize;
+	int32				ExpectedDataSize;
+	TArray<uint8>		ReceiveBuffer;
+
 };
