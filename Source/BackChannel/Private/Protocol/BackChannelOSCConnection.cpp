@@ -92,8 +92,6 @@ void FBackChannelOSCConnection::ReceiveData(const float MaxTime /*= 0*/)
 
 					if (Packet.IsValid())
 					{
-						FScopeLock Lock(&ReceiveMutex);
-
 						bool bAddPacket = true;
 
 						if (Packet->GetType() == OSCPacketType::Message)

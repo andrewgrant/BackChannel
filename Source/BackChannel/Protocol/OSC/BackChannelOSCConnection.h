@@ -9,6 +9,7 @@
 #include "HAL/Runnable.h"
 #include "HAL/RunnableThread.h"
 #include "BackChannel/Protocol/OSC/BackChannelOSCDispatch.h"
+#include "ThreadSafeBool.h"
 
 class IBackChannelConnection;
 class FBackChannelOSCPacket;

@@ -5,6 +5,7 @@
 
 #include "BackChannel/Private/BackChannelCommon.h"
 #include "BackChannel/Protocol/OSC/BackChannelOSCDispatch.h"
+#include "Protocol/OSC/BackChannelOSCMessage.h"
 
 
 FBackChannelOSCDispatch::FBackChannelOSCDispatch()

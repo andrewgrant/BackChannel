@@ -3,8 +3,10 @@
 // non-commercial use under an MIT license
 // See https://github.com/andrewgrant/BackChannel for more info
 
-#include "BackChannel/Private/BackChannelCommon.h"
-#include "BackChannel/Protocol/OSC/BackChannelOSCPacket.h"
+#include "Private/BackChannelCommon.h"
+#include "Protocol/OSC/BackChannelOSCPacket.h"
+#include "Protocol/OSC/BackChannelOSCBundle.h"
+#include "Protocol/OSC/BackChannelOSCMessage.h"
 
 
 
