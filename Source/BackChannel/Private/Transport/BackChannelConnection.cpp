@@ -8,7 +8,7 @@
 #include "BackChannel/Private/Transport/BackChannelConnection.h"
 #include "Common/TcpSocketBuilder.h"
 
-int32 GBackChannelLogPackets = 1;
+int32 GBackChannelLogPackets = 0;
 static FAutoConsoleVariableRef BCCVarLogPackets(
 	TEXT("backchannel.logpackets"), GBackChannelLogPackets,
 	TEXT("Logs incoming packets"),
