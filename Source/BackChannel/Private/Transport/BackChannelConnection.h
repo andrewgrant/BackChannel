@@ -54,13 +54,16 @@ public:
 	/* Return the underlying socket (if any) for this connection */
 	virtual FSocket* GetSocket() override { return Socket; }
 
+	/* Todo - Proper stats */
+	uint32	GetPacketsReceived() const override;
 
 private:
 
-	void					CloseWithError(const TCHAR* Error);
+	void					CloseWithError(const TCHAR* Error, FSocket* InSocket=nullptr);
 
 	FThreadSafeBool			IsAttemptingConnection;
 	FCriticalSection		SocketMutex;
 	FSocket*				Socket;
 	bool					IsListener;
+	uint32					PacketsReceived;
 };

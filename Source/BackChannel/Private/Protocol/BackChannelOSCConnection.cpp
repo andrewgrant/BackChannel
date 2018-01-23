@@ -49,10 +49,11 @@ void FBackChannelOSCConnection::ReceivePackets(const float MaxTime /*= 0*/)
 
 void FBackChannelOSCConnection::ReceiveData(const float MaxTime /*= 0*/)
 {
-
 	const double StarTime = FPlatformTime::Seconds();
 
 	bool KeepReceiving = false;
+
+	int PacketsReceived = 0;
 
 	do
 	{
@@ -126,13 +127,14 @@ void FBackChannelOSCConnection::ReceiveData(const float MaxTime /*= 0*/)
 					}
 
 					ExpectedDataSize = 4;
+					PacketsReceived++;
 				}
 			}
 		}
 
 		const double ElapsedTime = FPlatformTime::Seconds() - StarTime;
 
-		KeepReceiving = Received && (ElapsedTime < MaxTime || MaxTime == 0);
+		KeepReceiving = PacketsReceived == 0 && ElapsedTime < MaxTime;
 
 	} while (KeepReceiving);
 }
@@ -147,6 +149,7 @@ void FBackChannelOSCConnection::DispatchMessages()
 		{
 			TSharedPtr<FBackChannelOSCMessage> Msg = StaticCastSharedPtr<FBackChannelOSCMessage>(Packet);
 
+			UE_LOG(LogBackChannel, Verbose, TEXT("Dispatching %s"), *Msg->GetAddress());
 			DispatchMap.DispatchMessage(*Msg.Get());
 		}
 	}
@@ -154,13 +157,14 @@ void FBackChannelOSCConnection::DispatchMessages()
 	ReceivedPackets.Empty();
 }
 
-bool FBackChannelOSCConnection::Start()
+bool FBackChannelOSCConnection::StartReceiveThread()
 {
 	check(IsRunning == false);
 
 	ExitRequested = false;
 
-	FRunnableThread* Thread = FRunnableThread::Create(this, TEXT("OSCHostConnection"));
+	// todo- expose this priority
+	FRunnableThread* Thread = FRunnableThread::Create(this, TEXT("OSCHostConnection"), 1024 * 1024, TPri_Highest);
 
 	if (Thread)
 	{
@@ -172,13 +176,18 @@ bool FBackChannelOSCConnection::Start()
 	return Thread != nullptr;
 }
 
+/* Returns true if running in the background */
+bool FBackChannelOSCConnection::IsThreaded() const
+{
+	return IsRunning;
+}
+
 uint32 FBackChannelOSCConnection::Run()
 {
 	const int32 kDefaultBufferSize = 4096;
 
 	TArray<uint8> Buffer;
 	Buffer.AddUninitialized(kDefaultBufferSize);
-
 
 	const float kTimeout = 10;
 
@@ -188,7 +197,7 @@ uint32 FBackChannelOSCConnection::Run()
 
 	while (ExitRequested == false)
 	{		
-		ReceivePackets(0);
+		ReceivePackets(1);
 
 		const double TimeSinceActivity = (FPlatformTime::Seconds() - LastReceiveTime);
 		if (TimeSinceActivity >= kTimeout)
@@ -196,6 +205,8 @@ uint32 FBackChannelOSCConnection::Run()
 			UE_LOG(LogBackChannel, Error, TEXT("Connection to %s timed out after %.02f seconds"), *Connection->GetDescription(), TimeSinceActivity);
 			ExitRequested = true;
 		}
+
+		FPlatformProcess::SleepNoStats(0);
 	}
 
 	UE_LOG(LogBackChannel, Verbose, TEXT("OSC Connection to %s is exiting."), *Connection->GetDescription());
@@ -223,14 +234,14 @@ void FBackChannelOSCConnection::Stop()
 
 bool FBackChannelOSCConnection::IsConnected() const
 {
-	return IsRunning;
+	return Connection->IsConnected();
 }
 
 bool FBackChannelOSCConnection::SendPacket(FBackChannelOSCPacket& Packet)
 {
 	FBackChannelOSCMessage* MsgPacket = (FBackChannelOSCMessage*)&Packet;
 
-	UE_LOG(LogBackChannel, Log, TEXT("Sending packet to %s"), *MsgPacket->GetAddress());
+	UE_LOG(LogBackChannel, Verbose, TEXT("Sending packet to %s"), *MsgPacket->GetAddress());
 	TArray<uint8> Data = Packet.WriteToBuffer();
 	return SendPacketData(Data.GetData(), Data.Num());
 }

@@ -48,6 +48,9 @@ public:
 	/* Return the underlying socket (if any) for this connection */
 	virtual FSocket* GetSocket() = 0;
 
+	/* Todo - Proper stats */
+	virtual uint32	GetPacketsReceived() const = 0;
+
 protected:
 
 	IBackChannelConnection() {}

@@ -29,7 +29,7 @@ public:
 
 public:
 
-	bool Start();
+	bool StartReceiveThread();
 
 	// Begin public FRunnable overrides
 	virtual void Stop() override;
@@ -37,6 +37,9 @@ public:
 	
 	/* Returns our connection state as determined by the underlying BackChannel connection */
 	bool IsConnected() const;
+
+	/* Returns true if running in the background */
+	bool IsThreaded() const;
 
 	void ReceivePackets(const float MaxTime = 0);
 

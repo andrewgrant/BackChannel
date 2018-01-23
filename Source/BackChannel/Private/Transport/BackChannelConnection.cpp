@@ -24,6 +24,7 @@ FBackChannelConnection::FBackChannelConnection()
 {
 	Socket = nullptr;
 	IsListener = false;
+	PacketsReceived = 0;
 }
 
 FBackChannelConnection::~FBackChannelConnection()
@@ -32,6 +33,12 @@ FBackChannelConnection::~FBackChannelConnection()
 	{
 		Close();
 	}
+}
+
+/* Todo - Proper stats */
+uint32	FBackChannelConnection::GetPacketsReceived() const
+{
+	return PacketsReceived;
 }
 
 bool FBackChannelConnection::IsConnected() const
@@ -63,13 +70,20 @@ void FBackChannelConnection::Close()
 		Socket->Close();
 		ISocketSubsystem::Get(PLATFORM_SOCKETSUBSYSTEM)->DestroySocket(Socket);
 		Socket = nullptr;
+		PacketsReceived = 0;
 	}
 }
 
-void FBackChannelConnection::CloseWithError(const TCHAR* Error)
+void FBackChannelConnection::CloseWithError(const TCHAR* Error, FSocket* InSocket)
 {
 	const TCHAR* SocketErr = ISocketSubsystem::Get(PLATFORM_SOCKETSUBSYSTEM)->GetSocketError(SE_GET_LAST_ERROR_CODE);
-	FString SockDesc = Socket != nullptr ? Socket->GetDescription() : TEXT("(No Socket)");
+    
+    if (InSocket == nullptr)
+    {
+        InSocket = Socket;
+    }
+    
+	FString SockDesc = InSocket != nullptr ? InSocket->GetDescription() : TEXT("(No Socket)");
 
 	UE_LOG(LogBackChannel, Error, TEXT("%s, Err: %s, Socket:%s"), Error, SocketErr, *SockDesc);
 
@@ -91,23 +105,34 @@ bool FBackChannelConnection::Connect(const TCHAR* InEndPoint)
 
 	FString Description = FString::Printf(TEXT("%s"), InEndPoint);
 
-	FSocket* NewSocket = FTcpSocketBuilder(*Description)
-		.AsReusable();
+	FSocket* NewSocket = FTcpSocketBuilder(*Description);
 
 	if (NewSocket)
 	{
 		FIPv4Endpoint EndPoint;
 		FIPv4Endpoint::Parse(LocalEndPoint, EndPoint);
+        
+        bool Success =NewSocket->Connect(*EndPoint.ToInternetAddr());
+        
+        if (!Success)
+        {
+            /*int32 LastErr = ISocketSubsystem::Get(PLATFORM_SOCKETSUBSYSTEM)->GetLastErrorCode();
+            
+            if (LastErr == SE_EINPROGRESS || LastErr == SE_EWOULDBLOCK)
+            {
+                Success = true;
+            }*/
+        }
 
-		if (NewSocket->Connect(*EndPoint.ToInternetAddr()))
+		if (Success)
 		{
 			UE_LOG(LogBackChannel, Log, TEXT("Opening connection to %s (localport: %d)"), *NewSocket->GetDescription(), NewSocket->GetPortNo());
 			Attach(NewSocket);
 		}
 		else
 		{
-			ISocketSubsystem::Get(PLATFORM_SOCKETSUBSYSTEM)->DestroySocket(NewSocket);
-			CloseWithError(*FString::Printf(TEXT("Failed to open connection to %s."), InEndPoint));
+			CloseWithError(*FString::Printf(TEXT("Failed to open connection to %s."), InEndPoint), NewSocket);
+            ISocketSubsystem::Get(PLATFORM_SOCKETSUBSYSTEM)->DestroySocket(NewSocket);
 		}
 	}
 
@@ -119,19 +144,85 @@ bool FBackChannelConnection::Listen(const int16 Port)
 	FScopeLock Lock(&SocketMutex);
 
 	FIPv4Endpoint Endpoint(FIPv4Address::Any, Port);
+    
+    FSocket* NewSocket = nullptr;
 
-	FSocket* NewSocket = FTcpSocketBuilder(TEXT("FBackChannelConnection ListenSocket"))
-		.AsReusable()
+    
+	NewSocket = FTcpSocketBuilder(TEXT("FBackChannelConnection ListenSocket"))
 		.BoundToEndpoint(Endpoint)
 		.Listening(8)
 		.WithSendBufferSize(2 * 1024 * 1024);
+    
+    ISocketSubsystem* SocketSubsystem = ISocketSubsystem::Get(PLATFORM_SOCKETSUBSYSTEM);
+    
+    if (NewSocket == nullptr && SocketSubsystem != nullptr)
+    {
+        NewSocket = SocketSubsystem->CreateSocket(NAME_Stream, TEXT("FBackChannelConnection ListenSocket"), true);
+        
+        if (NewSocket != nullptr)
+        {
+            bool Error = false;//!NewSocket->SetReuseAddr(true);
+            
+            if (!Error)
+            {
+                Error = !NewSocket->SetRecvErr();
+            }
+            
+            if (!Error)
+            {
+                Error = !NewSocket->Bind(*Endpoint.ToInternetAddr());
+            }
+            
+            if (!Error)
+            {
+                Error = !NewSocket->Listen(2);
+            }
+            
+            if (!Error)
+            {
+                Error = !NewSocket->SetNonBlocking(!false);
+            }
+            
+            if (!Error)
+            {
+                int32 OutNewSize;
+                
+                int32 ReceiveBufferSize = 2 * 1024 * 1024;
+                int32 SendBufferSize = ReceiveBufferSize;
+                
+                if (ReceiveBufferSize > 0)
+                {
+                    NewSocket->SetReceiveBufferSize(ReceiveBufferSize, OutNewSize);
+                }
+                
+                if (SendBufferSize > 0)
+                {
+                    NewSocket->SetSendBufferSize(SendBufferSize, OutNewSize);
+                }
+            }
+            
+            if (Error)
+            {
+                const TCHAR* SocketErr = ISocketSubsystem::Get(PLATFORM_SOCKETSUBSYSTEM)->GetSocketError(SE_GET_LAST_ERROR_CODE);
+                GLog->Logf(TEXT("FTcpSocketBuilder: Failed to create the socket %s as configured. %s"), TEXT("Pfft"), SocketErr);
+                
+                SocketSubsystem->DestroySocket(NewSocket);
+                
+                NewSocket = nullptr;
+            }
+        }
+    }
 
 	if (NewSocket == nullptr)
 	{
+        const TCHAR* SocketErr = ISocketSubsystem::Get(PLATFORM_SOCKETSUBSYSTEM)->GetSocketError(SE_GET_LAST_ERROR_CODE);
+        
+        UE_LOG(LogBackChannel, Error, TEXT("Failed to open socket on port %d. Err: %s"), Port, SocketErr);
 		CloseWithError(*FString::Printf(TEXT("Failed to start listening on port %d"), Port));
 	}
 	else
 	{
+		UE_LOG(LogBackChannel, Log, TEXT("Listening on %s (localport: %d)"), *NewSocket->GetDescription(), NewSocket->GetPortNo());
 		Attach(NewSocket);
 		IsListener = true;
 	}
@@ -143,17 +234,42 @@ bool FBackChannelConnection::WaitForConnection(double InTimeout, TFunction<bool(
 {
 	FScopeLock Lock(&SocketMutex);
 
+	if (!Socket)
+	{
+		UE_LOG(LogBackChannel, Error, TEXT("Connection has no socket. Call Listen/Connect before WaitForConnection"));
+		return false;
+	}
+
 	FTimespan SleepTime = FTimespan(0, 0, InTimeout);
 
 	// handle incoming connections
 
-	bool Pending = false;
+	bool CheckSucceeded = false;
+	bool HasConnection = false;
 
-	bool Success = Socket->WaitForPendingConnection(Pending, SleepTime);
-
-	if (Success)
+	if (IsListener)
 	{
-		if (Pending)
+		CheckSucceeded = Socket->WaitForPendingConnection(HasConnection, SleepTime);
+	}
+	else
+	{
+		ESocketConnectionState State = Socket->GetConnectionState();
+
+		if (State == ESocketConnectionState::SCS_ConnectionError)
+		{
+			const TCHAR* SocketErr = ISocketSubsystem::Get(PLATFORM_SOCKETSUBSYSTEM)->GetSocketError(SE_GET_LAST_ERROR_CODE);
+			UE_LOG(LogBackChannel, Warning, TEXT("Socket has error %s"), SocketErr);
+		}
+		else
+		{
+			CheckSucceeded = true;
+			HasConnection = State == ESocketConnectionState::SCS_Connected;
+		}
+	}
+	
+	if (CheckSucceeded)
+	{
+		if (HasConnection)
 		{
 			UE_LOG(LogBackChannel, Log, TEXT("Found connection on %s"), *Socket->GetDescription());
 
@@ -176,7 +292,6 @@ bool FBackChannelConnection::WaitForConnection(double InTimeout, TFunction<bool(
 					{
 						UE_LOG(LogBackChannel, Warning, TEXT("Calling code rejected connection on %s"), *Socket->GetDescription());
 						BCConnection->Close();
-						Pending = false;
 					}
 					else
 					{
@@ -188,10 +303,10 @@ bool FBackChannelConnection::WaitForConnection(double InTimeout, TFunction<bool(
 	}
 	else
 	{
-		CloseWithError(TEXT("Connection Failed"));
+		CloseWithError(TEXT("Connection Check Failed"));
 	}
 
-	return Success;
+	return CheckSucceeded;
 }
 
 bool FBackChannelConnection::Attach(FSocket* InSocket)
@@ -220,9 +335,11 @@ int32 FBackChannelConnection::SendData(const void* InData, const int32 InSize)
 	{
 		if (GBackChannelLogErrors)
 		{
-			const TCHAR* SocketErr = ISocketSubsystem::Get(PLATFORM_SOCKETSUBSYSTEM)->GetSocketError(SE_GET_LAST_ERROR_CODE);
-			
-			UE_CLOG(GBackChannelLogErrors, LogBackChannel, Error, TEXT("Failed to send %d bytes of data to %s. Err: %s"), BytesSent, *GetDescription(), SocketErr);
+            //ESocketErrors LastError = ISocketSubsystem::Get(PLATFORM_SOCKETSUBSYSTEM)->GetLastErrorCode();
+			//const TCHAR* SocketErr = ISocketSubsystem::Get(PLATFORM_SOCKETSUBSYSTEM)->GetSocketError(LastError);
+			//UE_CLOG(GBackChannelLogErrors, LogBackChannel, Error, TEXT("Failed to send %d bytes of data to %s. Err: %s"), BytesSent, *GetDescription(), SocketErr);
+            
+            UE_CLOG(GBackChannelLogErrors, LogBackChannel, Error, TEXT("Failed to send %d bytes of data to %s. "), BytesSent, *GetDescription());
 		}
 	}
 	else
@@ -246,6 +363,7 @@ int32 FBackChannelConnection::ReceiveData(void* OutBuffer, const int32 BufferSiz
 	// todo - close connection on certain errors
 	if (BytesRead > 0)
 	{
+		PacketsReceived++;
 		UE_CLOG(GBackChannelLogPackets, LogBackChannel, Log, TEXT("Received %d bytes of data"), BytesRead);
 	}
 	return BytesRead;

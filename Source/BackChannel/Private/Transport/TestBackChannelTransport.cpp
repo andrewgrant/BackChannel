@@ -5,12 +5,18 @@
 
 #include "BackChannel/Private/BackChannelCommon.h"
 #include "BackChannel/Transport/IBackChannelTransport.h"
+#include "Utils/BackChannelThreadedConnection.h"
 
-#if WITH_DEV_AUTOMATION_TESTS && 0
+PRAGMA_DISABLE_OPTIMIZATION
+
+#if WITH_DEV_AUTOMATION_TESTS && 1
 
 class FBackChannelTestTransport : public FAutomationTestBase
 {
-
+	enum
+	{
+		DefaultPort = 2020
+	};
 public:
 
 	FBackChannelTestTransport(const FString& InName, const bool bInComplexTask)
@@ -20,7 +26,7 @@ public:
 	{
 		if (IBackChannelTransport* BC = IBackChannelTransport::Get())
 		{
-			BackChannelListener = BC->CreateListener(IBackChannelTransport::TCP);
+			ListenerConnection = BC->CreateConnection(IBackChannelTransport::TCP);
 		}
 	}
 
@@ -28,51 +34,51 @@ public:
 	{
 		if (IBackChannelTransport* BC = IBackChannelTransport::Get())
 		{
-			BackChannelConnection1 = BC->CreateConnection(IBackChannelTransport::TCP);
+			ClientConnection = BC->CreateConnection(IBackChannelTransport::TCP);
 		}
 	}
 	
 	bool ConnectListenerAndConnection()
 	{
 		FThreadSafeBool WaitingForConnect;
-		FThreadSafeBool IsConnected;
+		FThreadSafeBool ServerIsConnected;
 
-		BackChannelListener->GetOnConnectionRequestDelegate().BindLambda([this, &IsConnected](auto NewConnection)->bool
+		ListenerConnection->Listen(DefaultPort);
+		ClientConnection->Connect(*FString::Printf(TEXT("127.0.0.1:%d"), (int)DefaultPort));
+
+		bool ClientConnected = false;
+		bool AcceptConnected = false;
+
+		FBackChannelThreadedListener ThreadedConnection;
+
+		ThreadedConnection.Start(ListenerConnection.ToSharedRef(), 
+			FBackChannelListenerDelegate::CreateLambda([this, &AcceptConnected](TSharedPtr<IBackChannelConnection> NewConnection)
 		{
-			BackChannelConnection2 = NewConnection;
-			IsConnected = true;
+			AcceptConnected = true;
+			AcceptedConnection = NewConnection;
 			return true;
-		});
+		}));
 
-		BackChannelListener->Listen(1313);
-
-		WaitingForConnect = true;
-
-		BackChannelConnection1->Connect(TEXT("127.0.0.1:1313"));
-		
-		BackChannelConnection1->WaitForConnection(5, [&WaitingForConnect](auto) {
-			WaitingForConnect = false;
-			return true;
-		});
-
-		while (WaitingForConnect)
+		do 
 		{
-			FPlatformProcess::SleepNoStats(0);
-		}
+			if (ClientConnected == false)
+			{
+				ClientConnection->WaitForConnection(0, [&ClientConnected](TSharedPtr<IBackChannelConnection> NewConnection) {
+					ClientConnected = true;
+					return true;
+				});
+			}
 
-		const double StartTime = FPlatformTime::Seconds();
+			FPlatformProcess::SleepNoStats(0.5);
 
-		while (!IsConnected && (FPlatformTime::Seconds() - StartTime) < 10)
-		{
-			FPlatformProcess::SleepNoStats(1);
-		}
+		} while (!ClientConnected || !AcceptConnected);
 
-		return BackChannelConnection2.IsValid();
+		return AcceptedConnection.IsValid();
 	}
 
-	TSharedPtr<IBackChannelListener>	BackChannelListener;
-	TSharedPtr<IBackChannelConnection>	BackChannelConnection1;
-	TSharedPtr<IBackChannelConnection>	BackChannelConnection2;
+	TSharedPtr<IBackChannelConnection>	ListenerConnection;
+	TSharedPtr<IBackChannelConnection>	ClientConnection;
+	TSharedPtr<IBackChannelConnection>	AcceptedConnection;
 
 };
 
@@ -83,11 +89,11 @@ bool FBackChannelTestCreate::RunTest(const FString& Parameters)
 	CreateListener();
 	CreateConnection1();
 
-	return BackChannelListener.IsValid() && BackChannelConnection1.IsValid();
+	return ListenerConnection.IsValid() && ClientConnection.IsValid();
 }
 
 
-IMPLEMENT_CUSTOM_SIMPLE_AUTOMATION_TEST(FBackChannelTestConnect, FBackChannelTestTransport, "Project.BackChannel.TestConnect", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+IMPLEMENT_CUSTOM_SIMPLE_AUTOMATION_TEST(FBackChannelTestConnect, FBackChannelTestTransport, "Project.BackChannel.TestConnect", EAutomationTestFlags::ApplicationContextMask | EAutomationTestFlags::EngineFilter)
 
 bool FBackChannelTestConnect::RunTest(const FString& Parameters)
 {
@@ -96,10 +102,10 @@ bool FBackChannelTestConnect::RunTest(const FString& Parameters)
 
 	ConnectListenerAndConnection();
 
-	return BackChannelListener.IsValid() && BackChannelConnection1.IsValid() && BackChannelConnection2.IsValid();	
+	return ListenerConnection.IsValid() && ClientConnection.IsValid() && AcceptedConnection.IsValid();	
 }
 
-IMPLEMENT_CUSTOM_SIMPLE_AUTOMATION_TEST(FBackChannelTestSendReceive, FBackChannelTestTransport, "Project.BackChannel.TestConnect", EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+IMPLEMENT_CUSTOM_SIMPLE_AUTOMATION_TEST(FBackChannelTestSendReceive, FBackChannelTestTransport, "Project.BackChannel.TestConnect", EAutomationTestFlags::ApplicationContextMask | EAutomationTestFlags::EngineFilter)
 
 bool FBackChannelTestSendReceive::RunTest(const FString& Parameters)
 {
@@ -113,11 +119,11 @@ bool FBackChannelTestSendReceive::RunTest(const FString& Parameters)
 
 	int32 MsgSize = Msg.Len() * sizeof(TCHAR);
 
-	int32 Sent = BackChannelConnection1->SendData(*Msg, MsgSize);
+	int32 Sent = ClientConnection->SendData(*Msg, MsgSize);
 
 	check(Sent == MsgSize);
 
-	int32 Received = BackChannelConnection2->ReceiveData(MsgReceived, 256);
+	int32 Received = AcceptedConnection->ReceiveData(MsgReceived, 256);
 
 	check(Received == Sent);
 
@@ -126,6 +132,6 @@ bool FBackChannelTestSendReceive::RunTest(const FString& Parameters)
 	return true;
 }
 
-
+PRAGMA_ENABLE_OPTIMIZATION
 
 #endif // WITH_DEV_AUTOMATION_TESTS

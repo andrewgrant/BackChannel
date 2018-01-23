@@ -8,7 +8,7 @@
 #include "CoreMinimal.h"
 #include "EngineMinimal.h"
 
-BACKCHANNEL_API DECLARE_LOG_CATEGORY_EXTERN(LogBackChannel, Verbose, All);
+BACKCHANNEL_API DECLARE_LOG_CATEGORY_EXTERN(LogBackChannel, Log, All);
 
 extern BACKCHANNEL_API int32 GBackChannelLogPackets;
 extern BACKCHANNEL_API int32 GBackChannelLogErrors;
