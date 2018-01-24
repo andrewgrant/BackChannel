@@ -164,7 +164,7 @@ bool FBackChannelOSCConnection::StartReceiveThread()
 	ExitRequested = false;
 
 	// todo- expose this priority
-	FRunnableThread* Thread = FRunnableThread::Create(this, TEXT("OSCHostConnection"), 1024 * 1024, TPri_Highest);
+	FRunnableThread* Thread = FRunnableThread::Create(this, TEXT("OSCHostConnection"), 1024 * 1024, TPri_AboveNormal);
 
 	if (Thread)
 	{
