@@ -15,6 +15,7 @@ FBackChannelOSCConnection::FBackChannelOSCConnection(TSharedRef<IBackChannelConn
 	LastReceiveTime = 0;
 	LastSendTime = 0;
 	PingTime = 3;
+	HasErrorState = false;
 
 	// OSC connections expect a size followed by payload for TCP connections
 	ExpectedDataSize = 4;
@@ -203,6 +204,7 @@ uint32 FBackChannelOSCConnection::Run()
 		if (TimeSinceActivity >= kTimeout)
 		{
 			UE_LOG(LogBackChannel, Error, TEXT("Connection to %s timed out after %.02f seconds"), *Connection->GetDescription(), TimeSinceActivity);
+			HasErrorState = true;
 			ExitRequested = true;
 		}
 
@@ -234,7 +236,7 @@ void FBackChannelOSCConnection::Stop()
 
 bool FBackChannelOSCConnection::IsConnected() const
 {
-	return Connection->IsConnected();
+	return Connection->IsConnected() && (HasErrorState == false);
 }
 
 bool FBackChannelOSCConnection::SendPacket(FBackChannelOSCPacket& Packet)

@@ -93,6 +93,7 @@ protected:
 	double				LastReceiveTime;
 	double				LastSendTime;
 	double				PingTime;
+	bool				HasErrorState;
 
 	int32				ReceivedDataSize;
 	int32				ExpectedDataSize;
