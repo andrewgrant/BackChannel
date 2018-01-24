@@ -116,12 +116,12 @@ bool FBackChannelConnection::Connect(const TCHAR* InEndPoint)
         
         if (!Success)
         {
-            /*int32 LastErr = ISocketSubsystem::Get(PLATFORM_SOCKETSUBSYSTEM)->GetLastErrorCode();
+            int32 LastErr = ISocketSubsystem::Get(PLATFORM_SOCKETSUBSYSTEM)->GetLastErrorCode();
             
             if (LastErr == SE_EINPROGRESS || LastErr == SE_EWOULDBLOCK)
             {
                 Success = true;
-            }*/
+            }
         }
 
 		if (Success)
