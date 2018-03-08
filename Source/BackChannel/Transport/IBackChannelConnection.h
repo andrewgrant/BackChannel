@@ -7,6 +7,8 @@
 
 // todo (agrant 2017/12/29): concept of 'connection' should be a base class with persistent connection subclass?
 
+class FSocket;
+
 /*
  *	Base class that describes a back-channel connection. The underlying behavior will depend on the type
  *	of connection that was requested from the factory
